@@ -4,6 +4,7 @@
 
 #include "cli/commands/convert_command.h"
 
+#include <chrono>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -14,8 +15,37 @@
 #include "core/error/error.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
+#include "parser/w3x/map_archive_io.h"
 
 namespace w3x_toolkit::cli {
+
+namespace {
+
+class TemporaryDirectory {
+ public:
+  explicit TemporaryDirectory(std::string_view prefix) {
+    const auto suffix =
+        std::to_string(std::chrono::steady_clock::now()
+                           .time_since_epoch()
+                           .count());
+    path_ = std::filesystem::temp_directory_path() /
+            (std::string(prefix) + "_" + suffix);
+    std::error_code ec;
+    std::filesystem::create_directories(path_, ec);
+  }
+
+  ~TemporaryDirectory() {
+    std::error_code ec;
+    std::filesystem::remove_all(path_, ec);
+  }
+
+  const std::filesystem::path& path() const { return path_; }
+
+ private:
+  std::filesystem::path path_;
+};
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Command interface
@@ -51,8 +81,22 @@ core::Result<void> ConvertCommand::Execute(
     return std::unexpected(options.error());
   }
 
-  W3X_ASSIGN_OR_RETURN(auto input_dir, ResolveMapInputDirectory(args[0]));
-  return RunConversion(input_dir, std::filesystem::path(args[1]),
+  W3X_ASSIGN_OR_RETURN(auto input_path, ResolveMapInputPath(args[0]));
+  if (core::FilesystemUtils::IsDirectory(input_path)) {
+    return RunConversion(input_path, std::filesystem::path(args[1]),
+                         options.value());
+  }
+
+  TemporaryDirectory unpacked_dir("w3x_toolkit_convert");
+  W3X_RETURN_IF_ERROR(
+      parser::w3x::UnpackMapArchive(input_path, unpacked_dir.path())
+          .transform([](const parser::w3x::UnpackManifest&) {})
+          .transform_error([&input_path](const core::Error& error) {
+            return core::Error::ConvertError(
+                "Failed to unpack packed map input '" + input_path.string() +
+                "': " + error.message());
+          }));
+  return RunConversion(unpacked_dir.path(), std::filesystem::path(args[1]),
                        options.value());
 }
 

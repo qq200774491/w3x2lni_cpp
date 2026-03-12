@@ -233,7 +233,51 @@ void TestPackedArchiveRejection() {
   w3x_toolkit::cli::ConvertCommand convert;
   auto convert_result =
       convert.Execute({packed_map.string(), (temp.path() / "out").string()});
-  Expect(!convert_result.has_value(), "Packed map input should be rejected");
+  Expect(!convert_result.has_value(),
+         "Invalid packed map input should still be rejected");
+}
+
+void TestPackedArchiveCommands() {
+  TemporaryDirectory temp;
+  const fs::path map_dir = temp.path() / "packed_commands_input";
+  const fs::path packed_map = temp.path() / "packed_commands_map.w3x";
+  const fs::path convert_out = temp.path() / "packed_converted";
+  const fs::path extract_out = temp.path() / "packed_extracted";
+
+  fs::create_directories(map_dir / "scripts");
+  WriteBinary(map_dir / "war3map.w3i", BuildMinimalW3i());
+  WriteText(map_dir / "war3map.j",
+            "function main takes nothing returns nothing\nendfunction\n");
+  WriteText(map_dir / "scripts" / "helper.lua", "print('helper')\n");
+  WriteText(map_dir / "war3map.wts", "STRING 1\n{\nPacked\n}\n");
+
+  w3x_toolkit::cli::PackCommand pack;
+  auto pack_result = pack.Execute({map_dir.string(), packed_map.string()});
+  Expect(pack_result.has_value(), "Pack command should create a packed map");
+
+  w3x_toolkit::cli::AnalyzeCommand analyze;
+  auto analyze_result = analyze.Execute({packed_map.string()});
+  Expect(analyze_result.has_value(),
+         "Analyze command should accept packed map input");
+
+  w3x_toolkit::cli::ExtractCommand extract;
+  auto extract_result = extract.Execute(
+      {packed_map.string(), extract_out.string(), "--type=scripts"});
+  Expect(extract_result.has_value(),
+         "Extract command should accept packed map input");
+  ExpectFileExists(extract_out / "war3map.j");
+  ExpectFileExists(extract_out / "scripts" / "helper.lua");
+
+  w3x_toolkit::cli::ConvertCommand convert;
+  auto convert_result = convert.Execute(
+      {packed_map.string(), convert_out.string(), "--no-table-data"});
+  Expect(convert_result.has_value(),
+         "Convert command should accept packed map input");
+  ExpectFileExists(convert_out / "map" / "war3map.w3i");
+  ExpectFileExists(convert_out / "map" / "war3map.wts");
+  ExpectFileExists(convert_out / "trigger" / "war3map.j");
+  ExpectFileExists(convert_out / "trigger" / "scripts" / "helper.lua");
+  ExpectFileExists(convert_out / "w3x2lni.ini");
 }
 
 void TestPackUnpackRoundTrip() {
@@ -338,6 +382,7 @@ int main() {
   try {
     TestDirectoryModeCommands();
     TestPackedArchiveRejection();
+    TestPackedArchiveCommands();
     TestPackUnpackRoundTrip();
     std::cout << "Smoke tests passed." << std::endl;
     return 0;

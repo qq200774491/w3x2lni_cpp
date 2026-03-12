@@ -8,7 +8,7 @@
 
 namespace w3x_toolkit::cli {
 
-core::Result<std::filesystem::path> ResolveMapInputDirectory(
+core::Result<std::filesystem::path> ResolveMapInputPath(
     const std::string& input_path) {
   std::filesystem::path input(input_path);
 
@@ -17,23 +17,28 @@ core::Result<std::filesystem::path> ResolveMapInputDirectory(
         core::Error::FileNotFound("Input path not found: " + input_path));
   }
 
-  if (core::FilesystemUtils::IsDirectory(input)) {
-    auto absolute = core::FilesystemUtils::GetAbsolutePath(input);
-    if (!absolute.has_value()) {
-      return std::unexpected(core::Error::IOError(
-          "Failed to resolve map directory: " + absolute.error()));
-    }
-    return absolute.value();
+  if (!core::FilesystemUtils::IsDirectory(input) &&
+      !core::FilesystemUtils::IsFile(input)) {
+    return std::unexpected(core::Error::InvalidFormat(
+        "Input path is neither a file nor a directory: " + input_path));
   }
 
-  if (core::FilesystemUtils::IsFile(input)) {
-    return std::unexpected(core::Error::ConvertError(
-        "Packed .w3x/.w3m archives are not yet supported in the pure C++ "
-        "v1 build. Unpack the map to a directory and retry: " + input_path));
+  auto absolute = core::FilesystemUtils::GetAbsolutePath(input);
+  if (!absolute.has_value()) {
+    return std::unexpected(core::Error::IOError(
+        "Failed to resolve input path: " + absolute.error()));
   }
+  return absolute.value();
+}
 
-  return std::unexpected(core::Error::InvalidFormat(
-      "Input path is neither a file nor a directory: " + input_path));
+core::Result<std::filesystem::path> ResolveMapInputDirectory(
+    const std::string& input_path) {
+  W3X_ASSIGN_OR_RETURN(auto resolved, ResolveMapInputPath(input_path));
+  if (!core::FilesystemUtils::IsDirectory(resolved)) {
+    return std::unexpected(core::Error::InvalidFormat(
+        "Input must be an unpacked map directory: " + resolved.string()));
+  }
+  return resolved;
 }
 
 }  // namespace w3x_toolkit::cli

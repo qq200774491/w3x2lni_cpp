@@ -20,6 +20,7 @@
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
 #include "parser/w3i/w3i_parser.h"
+#include "parser/w3x/w3x_parser.h"
 
 namespace w3x_toolkit::cli {
 
@@ -55,18 +56,26 @@ std::string ScriptTypeName(int32_t script_type) {
   return "Unknown";
 }
 
-void PrintW3iSummary(const std::filesystem::path& map_dir) {
-  const auto w3i_path = map_dir / "war3map.w3i";
+void PrintW3iSummary(const std::filesystem::path& input_path) {
   std::cout << "Map Info (war3map.w3i):" << std::endl;
 
-  if (!core::FilesystemUtils::Exists(w3i_path)) {
-    std::cout << "  Not found in map directory." << std::endl << std::endl;
+  auto archive = parser::w3x::OpenArchive(input_path);
+  if (!archive) {
+    std::cout << "  Failed to open input as a directory or MPQ archive."
+              << std::endl
+              << std::endl;
     return;
   }
 
-  auto data = core::FilesystemUtils::ReadBinaryFile(w3i_path);
+  if (!archive->FileExists("war3map.w3i")) {
+    std::cout << "  Not found in input map." << std::endl << std::endl;
+    return;
+  }
+
+  auto data = archive->ExtractFile("war3map.w3i");
   if (!data.has_value()) {
-    std::cout << "  Failed to read file: " << data.error() << std::endl
+    std::cout << "  Failed to read file: " << data.error().message()
+              << std::endl
               << std::endl;
     return;
   }
@@ -123,10 +132,10 @@ core::Result<void> AnalyzeCommand::Execute(
 core::Result<void> AnalyzeCommand::RunAnalysis(const std::string& input_path) {
   auto& logger = core::Logger::Instance();
 
-  W3X_ASSIGN_OR_RETURN(auto input_dir, ResolveMapInputDirectory(input_path));
-  logger.Info("Analyzing unpacked map directory: {}", input_dir.string());
+  W3X_ASSIGN_OR_RETURN(auto input_source, ResolveMapInputPath(input_path));
+  logger.Info("Analyzing map input: {}", input_source.string());
 
-  converter::ResourceExtractor extractor(input_dir);
+  converter::ResourceExtractor extractor(input_source);
   W3X_ASSIGN_OR_RETURN(auto resources, extractor.ListResources());
 
   std::array<ResourceSummaryRow, 7> summaries{{
@@ -164,13 +173,13 @@ core::Result<void> AnalyzeCommand::RunAnalysis(const std::string& input_path) {
   std::cout << std::string(60, '=') << std::endl;
   std::cout << std::endl;
 
-  std::cout << "Directory Information:" << std::endl;
-  std::cout << "  Path:            " << input_dir.string() << std::endl;
+  std::cout << "Input Information:" << std::endl;
+  std::cout << "  Path:            " << input_source.string() << std::endl;
   std::cout << "  Total files:     " << resources.size() << std::endl;
   std::cout << "  Total size:      " << FormatSize(total_size) << std::endl;
   std::cout << std::endl;
 
-  PrintW3iSummary(input_dir);
+  PrintW3iSummary(input_source);
 
   std::cout << "Resource Breakdown:" << std::endl;
   for (const auto& summary : summaries) {

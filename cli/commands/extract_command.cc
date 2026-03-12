@@ -59,8 +59,8 @@ core::Result<void> ExtractCommand::Execute(
         "Unknown option: " + arg + "\nUsage: " + Usage()));
   }
 
-  W3X_ASSIGN_OR_RETURN(auto input_dir, ResolveMapInputDirectory(args[0]));
-  return RunExtraction(input_dir, std::filesystem::path(args[1]),
+  W3X_ASSIGN_OR_RETURN(auto input_path, ResolveMapInputPath(args[0]));
+  return RunExtraction(input_path, std::filesystem::path(args[1]),
                        resource_type);
 }
 

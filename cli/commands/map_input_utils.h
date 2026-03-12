@@ -12,11 +12,11 @@
 
 namespace w3x_toolkit::cli {
 
+// Resolves a CLI map input path to an existing directory or packed archive.
+core::Result<std::filesystem::path> ResolveMapInputPath(
+    const std::string& input_path);
+
 // Resolves a CLI map input path to an unpacked directory map.
-//
-// The current pure C++ v1 build supports unpacked map directories only.
-// Packed .w3x/.w3m MPQ archives are intentionally rejected with a clear
-// actionable error until the MPQ reader is implemented.
 core::Result<std::filesystem::path> ResolveMapInputDirectory(
     const std::string& input_path);
 

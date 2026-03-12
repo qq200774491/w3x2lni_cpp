@@ -7,6 +7,7 @@
 
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
+#include "parser/w3x/w3x_parser.h"
 
 namespace w3x_toolkit::converter
 {
@@ -93,6 +94,8 @@ namespace w3x_toolkit::converter
   ResourceExtractor::ResourceExtractor(std::filesystem::path archive_path)
       : archive_path_(std::move(archive_path)) {}
 
+  ResourceExtractor::~ResourceExtractor() = default;
+
   void ResourceExtractor::SetOutputPath(
       const std::filesystem::path &output_path)
   {
@@ -141,60 +144,36 @@ namespace w3x_toolkit::converter
           "Archive path does not exist: " + archive_path_.string()));
     }
 
-    if (core::FilesystemUtils::IsDirectory(archive_path_))
+    archive_ = parser::w3x::OpenArchive(archive_path_);
+    if (!archive_)
     {
-      // Scan directory recursively.
-      auto files =
-          core::FilesystemUtils::ListDirectoryRecursive(archive_path_);
-      if (!files.has_value())
-      {
-        return std::unexpected(core::Error::IOError(
-            "Failed to list archive directory: " + files.error()));
-      }
-
-      resource_list_.clear();
-      resource_list_.reserve(files.value().size());
-
-      for (const auto &file : files.value())
-      {
-        if (!core::FilesystemUtils::IsFile(file))
-        {
-          continue;
-        }
-
-        ResourceInfo info;
-        auto relative = std::filesystem::relative(file, archive_path_);
-        // Use forward slashes for the archive-relative path.
-        info.path = relative.generic_string();
-
-        auto ext = core::FilesystemUtils::GetExtension(file);
-        info.type = ClassifyExtension(ext);
-
-        auto size = core::FilesystemUtils::GetFileSize(file);
-        if (size.has_value())
-        {
-          info.size = size.value();
-        }
-
-        resource_list_.push_back(std::move(info));
-      }
+      return std::unexpected(core::Error::IOError(
+          "Failed to open map input as a directory or MPQ archive: " +
+          archive_path_.string()));
     }
-    else
-    {
-      // The input is an archive file (.w3x / .w3m).
-      // Full MPQ reading is not yet implemented.  For now, report the
-      // archive itself as a single resource.
-      core::Logger::Instance().Warn(
-          "ResourceExtractor: MPQ archive reading not yet implemented; "
-          "only directory-based extraction is supported");
 
+    W3X_ASSIGN_OR_RETURN(auto files, archive_->ListFiles());
+
+    resource_list_.clear();
+    resource_list_.reserve(files.size());
+
+    for (const auto &file : files)
+    {
       ResourceInfo info;
-      info.path = archive_path_.filename().string();
-      info.type = ResourceType::kUnknown;
-      auto size = core::FilesystemUtils::GetFileSize(archive_path_);
-      if (size.has_value())
+      info.path = file;
+      info.type = ClassifyExtension(std::filesystem::path(file).extension().string());
+
+      auto data = archive_->ExtractFile(file);
+      if (data.has_value())
       {
-        info.size = size.value();
+        info.size = static_cast<std::uint64_t>(data->size());
+      }
+      else
+      {
+        core::Logger::Instance().Warn(
+            "ResourceExtractor: failed to read '{}' while building resource "
+            "list: {}",
+            file, data.error().message());
       }
       resource_list_.push_back(std::move(info));
     }
@@ -235,22 +214,11 @@ namespace w3x_toolkit::converter
   core::Result<std::vector<std::uint8_t>> ResourceExtractor::ReadArchiveFile(
       std::string_view path)
   {
-    if (core::FilesystemUtils::IsDirectory(archive_path_))
+    if (!archive_)
     {
-      auto full_path = archive_path_ / std::filesystem::path(path);
-      auto data = core::FilesystemUtils::ReadBinaryFile(full_path);
-      if (!data.has_value())
-      {
-        return std::unexpected(core::Error::IOError(
-            "Failed to read file: " + std::string(path) + ": " + data.error()));
-      }
-      return std::move(data.value());
+      W3X_RETURN_IF_ERROR(EnsureResourceListLoaded());
     }
-
-    // MPQ archive reading not yet implemented.
-    return std::unexpected(core::Error::ConvertError(
-        "MPQ archive reading not yet implemented for file: " +
-        std::string(path)));
+    return archive_->ExtractFile(std::string(path));
   }
 
   core::Result<void> ResourceExtractor::WriteFile(

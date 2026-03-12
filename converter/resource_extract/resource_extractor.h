@@ -5,11 +5,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "core/error/error.h"
+
+namespace w3x_toolkit::parser::w3x {
+class W3xArchive;
+}
 
 namespace w3x_toolkit::converter
 {
@@ -71,7 +76,7 @@ namespace w3x_toolkit::converter
     // Constructs an extractor for the archive (or directory) at |archive_path|.
     explicit ResourceExtractor(std::filesystem::path archive_path);
 
-    ~ResourceExtractor() = default;
+    ~ResourceExtractor();
 
     // Non-copyable, movable.
     ResourceExtractor(const ResourceExtractor &) = delete;
@@ -143,6 +148,7 @@ namespace w3x_toolkit::converter
     std::filesystem::path archive_path_;
     std::filesystem::path output_path_;
     ExtractionProgressCallback progress_callback_;
+    std::unique_ptr<parser::w3x::W3xArchive> archive_;
     std::vector<ResourceInfo> resource_list_;
     bool resource_list_loaded_ = false;
   };

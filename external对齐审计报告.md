@@ -2,6 +2,40 @@
 
 日期：2026-03-12
 
+## 0. 对齐进度更新
+
+### 2026-03-12 第 1 个已落地点
+
+本轮已完成：
+
+- `analyze` 现在可直接接受 `.w3x/.w3m` 或目录输入
+- `extract` 现在可直接接受 `.w3x/.w3m` 或目录输入
+- `convert` 现在可直接接受 `.w3x/.w3m` 或目录输入
+- `ResourceExtractor` 已改为复用统一的 archive 抽象，目录和 MPQ 都走 `parser::w3x::OpenArchive()` 读取
+- 已补充 smoke test，覆盖真实 packed map 的 `analyze/extract/convert`
+
+对应代码：
+
+- `cli/commands/map_input_utils.h`
+- `cli/commands/map_input_utils.cc`
+- `cli/commands/analyze_command.cc`
+- `cli/commands/extract_command.cc`
+- `cli/commands/convert_command.cc`
+- `converter/resource_extract/resource_extractor.h`
+- `converter/resource_extract/resource_extractor.cc`
+- `tests/smoke_tests.cc`
+
+已验证：
+
+```powershell
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这次完成的是“输入模型第一阶段对齐”。
+- 还没有完成 `external` 那种完整统一转换管线，尤其是 `convert` 的真实语义转换、工作区布局统一和 `Lni/Obj/Slk` 三模式仍未对齐。
+
 ## 1. 审计目标
 
 本次审计的目标不是判断“当前项目是否可用”，而是判断：
@@ -67,6 +101,7 @@
 
 - 命令壳层：部分对齐
 - MPQ 读写基础能力：部分对齐
+- 输入模型（目录/MPQ）：已完成第一阶段部分对齐
 - 工作区目录结构：部分对齐
 - 真实对象语义转换：未对齐
 - `Lni/Obj/Slk` 三格式模型：未对齐
@@ -474,7 +509,7 @@
 - 当前仓库内部对“标准工作区长什么样”都还没有完全统一。
 - 这说明它距离“严格对齐 external 的稳定布局规则”还有距离。
 
-### 5.10 输入模型没有对齐：部分命令只支持目录，参考项目是目录/MPQ 统一抽象
+### 5.10 输入模型：已完成第一阶段部分对齐，但还没有达到 `external` 的统一转换层
 
 参考项目证据：
 
@@ -488,17 +523,29 @@
 当前项目证据：
 
 - `cli/commands/map_input_utils.cc`
+- `cli/commands/analyze_command.cc`
+- `cli/commands/extract_command.cc`
+- `cli/commands/convert_command.cc`
 - `converter/w3x2lni/w3x_to_lni.h`
 - `converter/resource_extract/resource_extractor.cc`
 
-差异：
+本轮已完成的对齐：
 
-- 当前 `convert/extract/analyze` 经过 `ResolveMapInputDirectory()` 后，只接受目录输入，遇到 `.w3x/.w3m` 会直接报“纯 C++ v1 不支持”。
-- 而 `external` 的整体模型是围绕统一 archive abstraction 运行的，目录与 MPQ 是同级输入后端。
+- 当前 `convert/extract/analyze` 已不再局限于目录输入。
+- `analyze/extract` 现在可直接读取 MPQ。
+- `convert` 现在会在接收到 `.w3x/.w3m` 时先临时解包，再复用现有目录转换链。
+- `ResourceExtractor` 现在已复用统一 archive abstraction，而不是把 MPQ 视为“暂不支持”。
+
+仍然存在的差异：
+
+- 当前只是把“输入接受能力”对齐到第一阶段。
+- `convert` 内部仍不是 `external` 那种围绕统一前端/后端转换模型运行的完整管线。
+- 目录输入与 archive 输入虽然都能工作，但还没有完全收敛为同一套高层转换语义。
 
 审计结论：
 
-- 当前 C++ 项目在“可用路径”上还没有和参考项目统一。
+- 这一项已从“未对齐”提升到“部分对齐”。
+- 但如果标准是严格等价 `external`，这里还不能算完成。
 
 ### 5.11 GUI 没有对齐，而且现有 GUI 代码存在明显未完成和自相矛盾的地方
 
@@ -678,4 +725,3 @@
   目前都没有完成对齐
 
 所以如果你的要求是“严格对齐 `external`，只是把 Lua 改成 C++”，那么当前项目仍处于**第一阶段原型完成、第二阶段核心对齐尚未开始或只开了头**的状态。
-
