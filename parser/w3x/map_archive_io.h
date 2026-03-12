@@ -15,6 +15,17 @@ namespace w3x_toolkit::parser::w3x {
 inline constexpr std::string_view kUnpackManifestFileName =
     ".w3x_manifest.json";
 
+enum class PackProfile : std::uint8_t {
+  kDefault = 0,
+  kObj = 1,
+  kSlk = 2,
+};
+
+struct PackOptions {
+  PackProfile profile = PackProfile::kDefault;
+  bool slk_doodad = true;
+};
+
 enum class ArchiveNameStatus : std::uint8_t {
   kOriginal = 0,
   kRecovered = 1,
@@ -43,7 +54,8 @@ core::Result<UnpackManifest> UnpackMapArchive(
 
 core::Result<std::size_t> PackMapDirectory(
     const std::filesystem::path& input_dir,
-    const std::filesystem::path& archive_path);
+    const std::filesystem::path& archive_path,
+    const PackOptions& options = {});
 
 }  // namespace w3x_toolkit::parser::w3x
 

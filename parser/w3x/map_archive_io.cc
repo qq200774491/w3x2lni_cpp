@@ -132,6 +132,92 @@ bool IsSourceOnlyGeneratedTableFile(std::string_view path) {
   return kGeneratedTableFiles.contains(NormalizeArchivePath(std::string(path)));
 }
 
+struct SlkBackedObjectSpec {
+  std::string_view object_file;
+  std::string_view source_ini;
+  std::array<std::string_view, 5> slk_files;
+  std::size_t slk_file_count = 0;
+  bool controlled_by_slk_doodad = false;
+};
+
+const SlkBackedObjectSpec* FindSlkBackedObjectSpec(std::string_view path) {
+  static constexpr std::array<SlkBackedObjectSpec, 7> kSpecs = {{
+      {"war3map.w3a",
+       "ability.ini",
+       {"units/abilitydata.slk", "", "", "", ""},
+       1,
+       false},
+      {"war3map.w3h",
+       "buff.ini",
+       {"units/abilitybuffdata.slk", "", "", "", ""},
+       1,
+       false},
+      {"war3map.w3u",
+       "unit.ini",
+       {"units/unitui.slk", "units/unitdata.slk", "units/unitbalance.slk",
+        "units/unitabilities.slk", "units/unitweapons.slk"},
+       5,
+       false},
+      {"war3map.w3t",
+       "item.ini",
+       {"units/itemdata.slk", "", "", "", ""},
+       1,
+       false},
+      {"war3map.w3q",
+       "upgrade.ini",
+       {"units/upgradedata.slk", "", "", "", ""},
+       1,
+       false},
+      {"war3map.w3b",
+       "destructable.ini",
+       {"units/destructabledata.slk", "", "", "", ""},
+       1,
+       true},
+      {"war3map.w3d",
+       "doodad.ini",
+       {"doodads/doodads.slk", "", "", "", ""},
+       1,
+       true},
+  }};
+
+  const std::string normalized = NormalizeArchivePath(std::string(path));
+  for (const SlkBackedObjectSpec& spec : kSpecs) {
+    if (normalized == spec.object_file) {
+      return &spec;
+    }
+  }
+  return nullptr;
+}
+
+bool HasCoveringSlkSource(const fs::path& input_dir,
+                          const SlkBackedObjectSpec& spec) {
+  for (std::size_t index = 0; index < spec.slk_file_count; ++index) {
+    if (core::FilesystemUtils::Exists(input_dir / std::string(spec.slk_files[index]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ShouldSuppressObjectFileForSlk(const fs::path& input_dir,
+                                    std::string_view relative_path,
+                                    const PackOptions& options) {
+  if (options.profile != PackProfile::kSlk) {
+    return false;
+  }
+  const SlkBackedObjectSpec* spec = FindSlkBackedObjectSpec(relative_path);
+  if (spec == nullptr) {
+    return false;
+  }
+  if (spec->controlled_by_slk_doodad && !options.slk_doodad) {
+    return false;
+  }
+  if (core::FilesystemUtils::Exists(input_dir / std::string(spec->source_ini))) {
+    return false;
+  }
+  return HasCoveringSlkSource(input_dir, *spec);
+}
+
 std::uint64_t HashBytes(const std::vector<std::uint8_t>& data) {
   constexpr std::uint64_t kOffset = 1469598103934665603ull;
   constexpr std::uint64_t kPrime = 1099511628211ull;
@@ -512,7 +598,8 @@ core::Result<UnpackManifest> UnpackMapArchive(const fs::path& archive_path,
 namespace {
 
 core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
-                                               const fs::path& archive_path) {
+                                               const fs::path& archive_path,
+                                               const PackOptions& options) {
   if (!core::FilesystemUtils::Exists(input_dir)) {
     return std::unexpected(core::Error::FileNotFound(
         "Input directory not found: " + input_dir.string()));
@@ -531,6 +618,16 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
 
   W3X_ASSIGN_OR_RETURN(auto synthetic_files,
                        GenerateSyntheticMapFiles(resolved_input_dir));
+  if (options.profile == PackProfile::kSlk) {
+    synthetic_files.erase(
+        std::remove_if(
+            synthetic_files.begin(), synthetic_files.end(),
+            [&](const GeneratedMapFile& generated) {
+              return ShouldSuppressObjectFileForSlk(
+                  resolved_input_dir, generated.relative_path, options);
+            }),
+        synthetic_files.end());
+  }
   std::unordered_set<std::string> synthetic_relative_paths;
   for (const auto& generated : synthetic_files) {
     synthetic_relative_paths.insert(
@@ -561,6 +658,9 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
       continue;
     }
     if (IsSourceOnlyGeneratedTableFile(relative)) {
+      continue;
+    }
+    if (ShouldSuppressObjectFileForSlk(resolved_input_dir, relative, options)) {
       continue;
     }
     if (synthetic_relative_paths.contains(relative)) {
@@ -707,9 +807,10 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
 }  // namespace
 
 core::Result<std::size_t> PackMapDirectory(const fs::path& input_dir,
-                                           const fs::path& archive_path) {
+                                           const fs::path& archive_path,
+                                           const PackOptions& options) {
   if (!IsWorkspaceLayout(input_dir)) {
-    return PackFlatMapDirectory(input_dir, archive_path);
+    return PackFlatMapDirectory(input_dir, archive_path, options);
   }
 
   const fs::path staging_dir = MakeTemporaryDirectoryPath("w3x_toolkit_pack");
@@ -731,7 +832,7 @@ core::Result<std::size_t> PackMapDirectory(const fs::path& input_dir,
     return std::unexpected(std::move(convert_result.error()));
   }
 
-  auto pack_result = PackFlatMapDirectory(staging_dir, archive_path);
+  auto pack_result = PackFlatMapDirectory(staging_dir, archive_path, options);
   cleanup();
   if (!pack_result.has_value()) {
     return std::unexpected(std::move(pack_result.error()));

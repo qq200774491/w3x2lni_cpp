@@ -50,6 +50,12 @@ std::filesystem::path DefaultOutputPath(const std::filesystem::path& input_path)
   return input_path.parent_path() / (input_path.stem().string() + "_obj.w3x");
 }
 
+parser::w3x::PackOptions BuildObjPackOptions() {
+  parser::w3x::PackOptions options;
+  options.profile = parser::w3x::PackProfile::kObj;
+  return options;
+}
+
 }  // namespace
 
 std::string ObjCommand::Name() const { return "obj"; }
@@ -83,8 +89,10 @@ core::Result<void> ObjCommand::Execute(const std::vector<std::string>& args) {
               output_path.string());
 
   if (core::FilesystemUtils::IsDirectory(input_path)) {
-    W3X_ASSIGN_OR_RETURN(auto packed_files,
-                         parser::w3x::PackMapDirectory(input_path, output_path));
+    W3X_ASSIGN_OR_RETURN(
+        auto packed_files,
+        parser::w3x::PackMapDirectory(input_path, output_path,
+                                      BuildObjPackOptions()));
     std::cout << "Obj map written to: " << output_path.string() << std::endl;
     std::cout << "Packed " << packed_files << " file(s)." << std::endl;
     return {};
@@ -101,7 +109,8 @@ core::Result<void> ObjCommand::Execute(const std::vector<std::string>& args) {
           }));
   W3X_ASSIGN_OR_RETURN(
       auto packed_files,
-      parser::w3x::PackMapDirectory(unpacked_dir.path(), output_path));
+      parser::w3x::PackMapDirectory(unpacked_dir.path(), output_path,
+                                    BuildObjPackOptions()));
   std::cout << "Obj map written to: " << output_path.string() << std::endl;
   std::cout << "Packed " << packed_files << " file(s)." << std::endl;
   return {};
