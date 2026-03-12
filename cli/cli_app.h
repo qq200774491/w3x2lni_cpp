@@ -25,7 +25,7 @@ namespace w3x_toolkit::cli {
 //   return app.Run(argc, argv);
 //
 // The constructor automatically registers the built-in commands (convert,
-// extract, analyze).
+// extract, analyze, unpack, pack).
 class CliApp {
  public:
   // Constructs the application and registers default commands.
@@ -53,7 +53,7 @@ class CliApp {
   static void PrintVersion();
 
  private:
-  // Registers the built-in commands (convert, extract, analyze).
+  // Registers the built-in commands (convert, extract, analyze, unpack, pack).
   void RegisterDefaultCommands();
 
   // Looks up a command by name.  Returns nullptr if not found.

@@ -35,6 +35,27 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+set(STORM_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+set(STORM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(STORM_USE_BUNDLED_LIBRARIES ON CACHE BOOL "" FORCE)
+set(STORM_UNICODE ON CACHE BOOL "" FORCE)
+set(W3X_LOCAL_STORMLIB_SOURCE
+    "${CMAKE_SOURCE_DIR}/build/stormlib_src/StormLib-master")
+if(EXISTS "${W3X_LOCAL_STORMLIB_SOURCE}/CMakeLists.txt")
+    add_subdirectory(
+        "${W3X_LOCAL_STORMLIB_SOURCE}"
+        "${CMAKE_BINARY_DIR}/_deps/stormlib-build"
+    )
+else()
+    FetchContent_Declare(
+        stormlib
+        GIT_REPOSITORY https://github.com/ladislav-zezula/StormLib.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(stormlib)
+endif()
+
 # ------------------------------------------------------------------------------
 # GUI-only dependencies
 # ------------------------------------------------------------------------------

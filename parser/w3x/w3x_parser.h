@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "core/error/error.h"
@@ -62,7 +63,7 @@ class DirectoryArchive final : public W3xArchive {
   bool is_open_ = false;
 };
 
-// Placeholder for future MPQ-based archive reader (requires StormLib).
+// MPQ-backed archive reader implemented via StormLib.
 class MpqArchive final : public W3xArchive {
  public:
   MpqArchive() = default;
@@ -80,7 +81,10 @@ class MpqArchive final : public W3xArchive {
  private:
   std::filesystem::path archive_path_;
   bool is_open_ = false;
-  // Future: HANDLE mpq_handle_ = nullptr;
+  void* archive_handle_ = nullptr;
+  mutable bool file_list_loaded_ = false;
+  mutable std::vector<std::string> file_list_;
+  mutable std::unordered_set<std::string> file_lookup_;
 };
 
 // Factory: opens either a directory archive or an MPQ archive depending on

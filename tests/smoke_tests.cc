@@ -15,7 +15,10 @@
 #include "cli/commands/analyze_command.h"
 #include "cli/commands/convert_command.h"
 #include "cli/commands/extract_command.h"
+#include "cli/commands/pack_command.h"
+#include "cli/commands/unpack_command.h"
 #include "core/filesystem/filesystem_utils.h"
+#include "parser/w3u/w3u_parser.h"
 
 namespace fs = std::filesystem;
 
@@ -59,6 +62,22 @@ void WriteText(const fs::path& path, const std::string& content) {
   if (!result.has_value()) {
     throw std::runtime_error(result.error());
   }
+}
+
+std::string ReadText(const fs::path& path) {
+  auto result = w3x_toolkit::core::FilesystemUtils::ReadTextFile(path);
+  if (!result.has_value()) {
+    throw std::runtime_error(result.error());
+  }
+  return result.value();
+}
+
+std::vector<std::uint8_t> ReadBinary(const fs::path& path) {
+  auto result = w3x_toolkit::core::FilesystemUtils::ReadBinaryFile(path);
+  if (!result.has_value()) {
+    throw std::runtime_error(result.error());
+  }
+  return result.value();
 }
 
 std::vector<std::uint8_t> BuildMinimalW3i() {
@@ -217,12 +236,106 @@ void TestPackedArchiveRejection() {
   Expect(!convert_result.has_value(), "Packed map input should be rejected");
 }
 
+void TestPackUnpackRoundTrip() {
+  TemporaryDirectory temp;
+  const fs::path map_dir = temp.path() / "packed_input";
+  const fs::path packed_map = temp.path() / "packed_map.w3x";
+  const fs::path unpacked_dir = temp.path() / "unpacked";
+  const fs::path repacked_map = temp.path() / "repacked_map.w3x";
+  const fs::path repacked_unpacked_dir = temp.path() / "repacked_unpacked";
+
+  fs::create_directories(map_dir / "units");
+
+  WriteBinary(map_dir / "war3map.w3i", BuildMinimalW3i());
+  WriteText(map_dir / "war3map.j",
+            "function main takes nothing returns nothing\nendfunction\n");
+  WriteText(map_dir / "ability.ini",
+            "[A000]\nName=TestAbility\nTip=Test Tip\n");
+  WriteText(map_dir / "misc.ini", "[HERO]\nName=Test Hero\n");
+  WriteText(map_dir / "units" / "abilitydata.slk",
+            "ID;PWXL;N;E\n"
+            "B;X2;Y2;D0\n"
+            "C;X1;Y1;K\"alias\"\n"
+            "C;X2;K\"code\"\n"
+            "C;X1;Y2;K\"A000\"\n"
+            "C;X2;K\"ANcl\"\n"
+            "E\n");
+
+  w3x_toolkit::cli::PackCommand pack;
+  auto pack_result = pack.Execute({map_dir.string(), packed_map.string()});
+  Expect(pack_result.has_value(), "Pack command should succeed");
+  ExpectFileExists(packed_map);
+
+  w3x_toolkit::cli::UnpackCommand unpack;
+  auto unpack_result =
+      unpack.Execute({packed_map.string(), unpacked_dir.string()});
+  Expect(unpack_result.has_value(), "Unpack command should succeed");
+  ExpectFileExists(unpacked_dir / "war3map.w3i");
+  ExpectFileExists(unpacked_dir / "war3map.j");
+  ExpectFileExists(unpacked_dir / "ability.ini");
+  ExpectFileExists(unpacked_dir / "units" / "abilitydata.slk");
+  ExpectFileExists(unpacked_dir / "war3map.w3a");
+  ExpectFileExists(unpacked_dir / "war3mapmisc.txt");
+  ExpectFileExists(unpacked_dir / ".w3x_manifest.json");
+
+  auto ability_obj =
+      w3x_toolkit::parser::w3u::ParseW3a(ReadBinary(unpacked_dir / "war3map.w3a"));
+  Expect(ability_obj.has_value(), "Generated war3map.w3a should be parseable");
+  Expect(ability_obj->custom_objects.size() == 1,
+         "Generated war3map.w3a should contain one custom object");
+  Expect(ability_obj->custom_objects[0].original_id == "ANcl",
+         "Custom object should preserve its parent rawcode");
+  Expect(ability_obj->custom_objects[0].custom_id == "A000",
+         "Custom object should preserve its custom rawcode");
+
+  WriteText(unpacked_dir / "units" / "abilitydata.slk",
+            ReadText(unpacked_dir / "units" / "abilitydata.slk") +
+                "C;X1;Y2;K\"roundtrip\"\n");
+  WriteText(unpacked_dir / "ability.ini",
+            "[A000]\nName=UpdatedAbility\nTip=Updated Tip\n");
+
+  auto repack_result =
+      pack.Execute({unpacked_dir.string(), repacked_map.string()});
+  Expect(repack_result.has_value(), "Pack command should repack unpacked dir");
+  ExpectFileExists(repacked_map);
+
+  auto re_unpacked_result =
+      unpack.Execute({repacked_map.string(), repacked_unpacked_dir.string()});
+  Expect(re_unpacked_result.has_value(),
+         "Unpack command should unpack repacked archive");
+  ExpectFileExists(repacked_unpacked_dir / "war3map.w3a");
+  ExpectFileExists(repacked_unpacked_dir / "war3mapmisc.txt");
+  Expect(ReadText(repacked_unpacked_dir / "units" / "abilitydata.slk")
+             .find("roundtrip") != std::string::npos,
+         "Modified SLK content should survive repack");
+
+  auto repacked_ability_obj = w3x_toolkit::parser::w3u::ParseW3a(
+      ReadBinary(repacked_unpacked_dir / "war3map.w3a"));
+  Expect(repacked_ability_obj.has_value(),
+         "Repacked war3map.w3a should remain parseable");
+  Expect(!repacked_ability_obj->custom_objects.empty(),
+         "Repacked war3map.w3a should still contain the custom object");
+  bool found_updated_name = false;
+  for (const auto& modification :
+       repacked_ability_obj->custom_objects[0].modifications) {
+    if (modification.field_id == "anam" &&
+        std::holds_alternative<std::string>(modification.value) &&
+        std::get<std::string>(modification.value) == "UpdatedAbility") {
+      found_updated_name = true;
+      break;
+    }
+  }
+  Expect(found_updated_name,
+         "Repacked war3map.w3a should be regenerated from ability.ini");
+}
+
 }  // namespace
 
 int main() {
   try {
     TestDirectoryModeCommands();
     TestPackedArchiveRejection();
+    TestPackUnpackRoundTrip();
     std::cout << "Smoke tests passed." << std::endl;
     return 0;
   } catch (const std::exception& ex) {

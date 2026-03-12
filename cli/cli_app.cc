@@ -15,6 +15,8 @@
 #include "cli/commands/analyze_command.h"
 #include "cli/commands/convert_command.h"
 #include "cli/commands/extract_command.h"
+#include "cli/commands/pack_command.h"
+#include "cli/commands/unpack_command.h"
 #include "core/error/error.h"
 #include "core/logger/logger.h"
 
@@ -153,6 +155,8 @@ void CliApp::RegisterDefaultCommands() {
   (void)RegisterCommand(std::make_unique<ConvertCommand>());
   (void)RegisterCommand(std::make_unique<ExtractCommand>());
   (void)RegisterCommand(std::make_unique<AnalyzeCommand>());
+  (void)RegisterCommand(std::make_unique<UnpackCommand>());
+  (void)RegisterCommand(std::make_unique<PackCommand>());
 }
 
 Command* CliApp::FindCommand(const std::string& name) const {
