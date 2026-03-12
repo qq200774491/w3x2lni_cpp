@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -20,6 +21,7 @@
 
 #include "core/filesystem/filesystem_utils.h"
 #include "parser/w3x/object_pack_generator.h"
+#include "parser/w3x/workspace_layout.h"
 #include "parser/w3x/w3x_parser.h"
 
 namespace w3x_toolkit::parser::w3x {
@@ -352,6 +354,12 @@ std::optional<std::string> TryRecoverAnonymousTextPath(
   return std::nullopt;
 }
 
+fs::path MakeTemporaryDirectoryPath(std::string_view prefix) {
+  const auto ticks =
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  return fs::temp_directory_path() / (std::string(prefix) + "_" + ticks);
+}
+
 }  // namespace
 
 core::Result<UnpackManifest> UnpackMapArchive(const fs::path& archive_path,
@@ -493,8 +501,10 @@ core::Result<UnpackManifest> UnpackMapArchive(const fs::path& archive_path,
   return manifest;
 }
 
-core::Result<std::size_t> PackMapDirectory(const fs::path& input_dir,
-                                           const fs::path& archive_path) {
+namespace {
+
+core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
+                                               const fs::path& archive_path) {
   if (!core::FilesystemUtils::Exists(input_dir)) {
     return std::unexpected(core::Error::FileNotFound(
         "Input directory not found: " + input_dir.string()));
@@ -681,6 +691,41 @@ core::Result<std::size_t> PackMapDirectory(const fs::path& input_dir,
         core::Error::IOError(FormatStormError("Closing archive", archive_path)));
   }
   return packed_files;
+}
+
+}  // namespace
+
+core::Result<std::size_t> PackMapDirectory(const fs::path& input_dir,
+                                           const fs::path& archive_path) {
+  if (!IsWorkspaceLayout(input_dir)) {
+    return PackFlatMapDirectory(input_dir, archive_path);
+  }
+
+  const fs::path staging_dir = MakeTemporaryDirectoryPath("w3x_toolkit_pack");
+  auto create_result = core::FilesystemUtils::CreateDirectories(staging_dir);
+  if (!create_result.has_value()) {
+    return std::unexpected(core::Error::IOError(
+        "Failed to create staging directory: " + staging_dir.string() + ": " +
+        create_result.error()));
+  }
+
+  auto cleanup = [&staging_dir]() {
+    std::error_code ec;
+    fs::remove_all(staging_dir, ec);
+  };
+
+  auto convert_result = ConvertWorkspaceToFlatDirectory(input_dir, staging_dir);
+  if (!convert_result.has_value()) {
+    cleanup();
+    return std::unexpected(std::move(convert_result.error()));
+  }
+
+  auto pack_result = PackFlatMapDirectory(staging_dir, archive_path);
+  cleanup();
+  if (!pack_result.has_value()) {
+    return std::unexpected(std::move(pack_result.error()));
+  }
+  return pack_result;
 }
 
 }  // namespace w3x_toolkit::parser::w3x
