@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "converter/jass2lua/jass_tokenizer.h"
 #include "core/error/error.h"
 
 namespace w3x_toolkit::converter {
@@ -38,73 +39,35 @@ struct JassToLuaOptions {
 //   - set <var> = <expr>       -> <var> = <expr>
 //   - call <func>(...)         -> <func>(...)
 //   - globals/endglobals       -> module-level assignments
-//   - array[idx]               -> table[idx]  (1-indexed adjustment)
+//   - array[idx]               -> table[idx]
 //   - Type mapping: integer/real -> number, boolean -> boolean,
 //                   string -> string, handle subtypes -> userdata
 //   - Operators: and/or/not preserved, != -> ~=
 //   - null -> nil
 //   - String concatenation: + on strings -> ..
 //
-// Usage:
-//   JassToLuaConverter converter;
-//   converter.SetOptions(options);
-//   auto result = converter.Convert(jass_source);
-//   if (result.has_value()) {
-//     std::string lua_code = result.value();
-//   }
-//
 class JassToLuaConverter {
  public:
   JassToLuaConverter();
   ~JassToLuaConverter() = default;
 
-  // Non-copyable, movable.
   JassToLuaConverter(const JassToLuaConverter&) = delete;
   JassToLuaConverter& operator=(const JassToLuaConverter&) = delete;
   JassToLuaConverter(JassToLuaConverter&&) noexcept = default;
   JassToLuaConverter& operator=(JassToLuaConverter&&) noexcept = default;
 
-  // Sets the conversion options.
   void SetOptions(const JassToLuaOptions& options);
-
-  // Returns the current options.
   const JassToLuaOptions& GetOptions() const;
 
   // Converts a complete JASS source string to its Lua equivalent.
-  // Returns the translated Lua source on success, or an error describing
-  // what went wrong (e.g. unexpected syntax).
   core::Result<std::string> Convert(std::string_view jass_source);
 
  private:
-  // Token types recognized by the simple JASS scanner.
-  enum class TokenType {
-    kKeyword,
-    kIdentifier,
-    kStringLiteral,
-    kIntegerLiteral,
-    kRealLiteral,
-    kRawCodeLiteral,  // FourCC 'xxxx'
-    kOperator,
-    kPunctuation,
-    kNewline,
-    kComment,
-    kEndOfFile,
-  };
+  using Token = JassToken;
+  using TT = JassTokenType;
 
-  struct Token {
-    TokenType type;
-    std::string text;
-    std::size_t line = 0;
-  };
-
-  // Tokenizes the JASS source into a flat list of tokens.
-  core::Result<std::vector<Token>> Tokenize(std::string_view source);
-
-  // Translates the token stream into Lua source.
   core::Result<std::string> TranslateTokens(const std::vector<Token>& tokens);
 
-  // Translation helpers for specific constructs.
-  std::string TranslateType(std::string_view jass_type);
   std::string TranslateOperator(std::string_view op);
   std::string TranslateExpression(const std::vector<Token>& tokens,
                                   std::size_t& pos);
@@ -112,21 +75,15 @@ class JassToLuaConverter {
                                     std::size_t& pos, int indent_level);
   std::string TranslateGlobalsBlock(const std::vector<Token>& tokens,
                                     std::size_t& pos);
+  std::string TranslateCondition(const std::vector<Token>& tokens,
+                                 std::size_t& pos);
 
-  // Returns true if the token at |pos| is a keyword matching |keyword|.
-  static bool IsKeyword(const std::vector<Token>& tokens, std::size_t pos,
-                        std::string_view keyword);
-
-  // Skips newline and comment tokens starting at |pos|.
-  static void SkipWhitespace(const std::vector<Token>& tokens,
-                             std::size_t& pos);
-
-  // Builds the indent string for the given nesting level.
-  std::string MakeIndent(int level) const;
+  static bool IsKw(const std::vector<Token>& t, std::size_t p,
+                   std::string_view kw);
+  static void SkipWs(const std::vector<Token>& t, std::size_t& p);
+  std::string Indent(int level) const;
 
   JassToLuaOptions options_;
-
-  // JASS keywords that need special handling.
   static const std::unordered_map<std::string, std::string> kTypeMap;
 };
 
