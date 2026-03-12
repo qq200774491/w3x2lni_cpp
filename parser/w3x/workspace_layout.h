@@ -16,6 +16,12 @@ core::Result<void> ConvertFlatDirectoryToWorkspace(
     const std::filesystem::path& flat_dir,
     const std::filesystem::path& workspace_dir);
 
+// Writes supplemental workspace files such as the marker, locale payload,
+// import list and derived w3i.ini for an existing workspace directory.
+core::Result<void> FinalizeWorkspaceDirectory(
+    const std::filesystem::path& flat_dir,
+    const std::filesystem::path& workspace_dir);
+
 // Converts an external-style workspace back into a flat map directory.
 core::Result<void> ConvertWorkspaceToFlatDirectory(
     const std::filesystem::path& workspace_dir,

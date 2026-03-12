@@ -1,15 +1,59 @@
 #include "converter/w3x2lni/w3x_to_lni.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <sstream>
 #include <string>
 #include <utility>
 
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
+#include "parser/w3x/workspace_layout.h"
 
 namespace w3x_toolkit::converter
 {
+
+  namespace
+  {
+
+    std::string Lower(std::string value)
+    {
+      std::transform(value.begin(), value.end(), value.begin(),
+                     [](unsigned char ch)
+                     { return static_cast<char>(std::tolower(ch)); });
+      return value;
+    }
+
+    bool HasExtension(const std::filesystem::path &path,
+                      std::string_view extension)
+    {
+      return Lower(path.extension().string()) == Lower(std::string(extension));
+    }
+
+    bool IsResourceFile(const std::filesystem::path &path)
+    {
+      return HasExtension(path, ".mdx") || HasExtension(path, ".mdl") ||
+             HasExtension(path, ".blp") || HasExtension(path, ".tga") ||
+             HasExtension(path, ".dds") || HasExtension(path, ".tif");
+    }
+
+    bool IsSoundFile(const std::filesystem::path &path)
+    {
+      return HasExtension(path, ".wav") || HasExtension(path, ".mp3") ||
+             HasExtension(path, ".ogg") || HasExtension(path, ".flac");
+    }
+
+    bool IsMapBinaryFile(const std::filesystem::path &path)
+    {
+      static const std::array<std::string_view, 10> kMapExtensions = {
+          ".w3e", ".wpm", ".shd", ".doo", ".mmp",
+          ".wts", ".w3i", ".w3r", ".w3c", ".w3s"};
+      const std::string ext = Lower(path.extension().string());
+      return std::ranges::find(kMapExtensions, ext) != kMapExtensions.end();
+    }
+
+  } // namespace
 
   // ---------------------------------------------------------------------------
   // Construction
@@ -125,6 +169,8 @@ namespace w3x_toolkit::converter
     {
       W3X_RETURN_IF_ERROR(WriteConfig());
     }
+    W3X_RETURN_IF_ERROR(
+        parser::w3x::FinalizeWorkspaceDirectory(input_path_, output_path_));
     ReportProgress("Complete", 4, 4, 1.0);
 
     core::Logger::Instance().Info("W3xToLni: conversion complete");
@@ -138,10 +184,15 @@ namespace w3x_toolkit::converter
   core::Result<void> W3xToLniConverter::PrepareOutputDirectory()
   {
     auto map_dir = output_path_ / "map";
+    auto resource_dir = output_path_ / "resource";
+    auto sound_dir = output_path_ / "sound";
     auto table_dir = output_path_ / "table";
     auto trigger_dir = output_path_ / "trigger";
+    auto toolkit_dir = output_path_ / "w3x2lni";
 
-    for (const auto &dir : {output_path_, map_dir, table_dir, trigger_dir})
+    for (const auto &dir :
+         {output_path_, map_dir, resource_dir, sound_dir, table_dir, trigger_dir,
+          toolkit_dir})
     {
       auto result = core::FilesystemUtils::CreateDirectories(dir);
       if (!result.has_value())
@@ -159,6 +210,8 @@ namespace w3x_toolkit::converter
     core::Logger::Instance().Debug("W3xToLni: extracting map files");
 
     auto map_output = output_path_ / "map";
+    auto resource_output = output_path_ / "resource";
+    auto sound_output = output_path_ / "sound";
 
     // When the input is a directory, copy recognized map files.
     if (core::FilesystemUtils::IsDirectory(input_path_))
@@ -179,36 +232,22 @@ namespace w3x_toolkit::converter
         {
           continue;
         }
-        auto ext = core::FilesystemUtils::GetExtension(file);
-        // Copy map-specific binary files.
-        static const std::vector<std::string> kMapExtensions = {
-            ".w3e",
-            ".wpm",
-            ".shd",
-            ".doo",
-            ".mmp",
-            ".wts",
-            ".w3i",
-            ".w3r",
-            ".w3c",
-            ".w3s",
-            ".blp",
-            ".tga",
-            ".mdx",
-            ".mdl",
-            ".wav",
-            ".mp3",
-        };
-        bool is_map_file =
-            std::find(kMapExtensions.begin(), kMapExtensions.end(), ext) !=
-            kMapExtensions.end();
-        if (!is_map_file)
+        if (!IsMapBinaryFile(file) && !IsResourceFile(file) && !IsSoundFile(file))
         {
           continue;
         }
 
         auto relative = std::filesystem::relative(file, input_path_);
-        auto dest = map_output / relative;
+        std::filesystem::path dest_root = map_output;
+        if (IsResourceFile(file))
+        {
+          dest_root = resource_output;
+        }
+        else if (IsSoundFile(file))
+        {
+          dest_root = sound_output;
+        }
+        auto dest = dest_root / relative;
 
         auto parent_result =
             core::FilesystemUtils::CreateDirectories(dest.parent_path());
@@ -228,15 +267,6 @@ namespace w3x_toolkit::converter
       }
       core::Logger::Instance().Info("W3xToLni: extracted {} map files", index);
     }
-    else
-    {
-      // Input is a .w3x archive file -- archive reading would be handled by
-      // the MPQ reader which is not yet implemented.  Log a placeholder note.
-      core::Logger::Instance().Warn(
-          "W3xToLni: archive extraction requires MPQ reader (not yet "
-          "available); skipping map file extraction from archive");
-    }
-
     return {};
   }
 
@@ -321,12 +351,6 @@ namespace w3x_toolkit::converter
       core::Logger::Instance().Info("W3xToLni: converted {} table files",
                                     index);
     }
-    else
-    {
-      core::Logger::Instance().Warn(
-          "W3xToLni: archive table extraction requires MPQ reader");
-    }
-
     return {};
   }
 
@@ -382,12 +406,6 @@ namespace w3x_toolkit::converter
       core::Logger::Instance().Info("W3xToLni: extracted {} trigger files",
                                     index);
     }
-    else
-    {
-      core::Logger::Instance().Warn(
-          "W3xToLni: archive trigger extraction requires MPQ reader");
-    }
-
     return {};
   }
 

@@ -42,6 +42,8 @@ using MetadataTables = std::unordered_map<std::string, MetadataTable>;
 enum class SyntheticType {
   kAbility,
   kBuff,
+  kDestructable,
+  kDoodad,
   kUnit,
   kItem,
   kUpgrade,
@@ -61,6 +63,11 @@ constexpr SyntheticTypeSpec kSyntheticSpecs[] = {
      "units/abilitydata.slk", parser::w3u::ObjectFileKind::kComplex},
     {SyntheticType::kBuff, "buff", "buff.ini", "war3map.w3h",
      "units/abilitybuffdata.slk", parser::w3u::ObjectFileKind::kComplex},
+    {SyntheticType::kDestructable, "destructable", "destructable.ini",
+     "war3map.w3b", "units/destructabledata.slk",
+     parser::w3u::ObjectFileKind::kSimple},
+    {SyntheticType::kDoodad, "doodad", "doodad.ini", "war3map.w3d",
+     "doodads/doodads.slk", parser::w3u::ObjectFileKind::kComplex},
     {SyntheticType::kUnit, "unit", "unit.ini", "war3map.w3u", nullptr,
      parser::w3u::ObjectFileKind::kSimple},
     {SyntheticType::kItem, "item", "item.ini", "war3map.w3t", nullptr,
@@ -326,9 +333,14 @@ core::Result<MetadataTables> LoadMetadataTables(const fs::path& metadata_path) {
 core::Result<fs::path> ResolvePrebuiltRoot() {
 #ifndef W3X_SOURCE_DIR
   return std::unexpected(core::Error::ConfigError(
-      "W3X_SOURCE_DIR is not defined; cannot resolve external metadata"));
+      "W3X_SOURCE_DIR is not defined; cannot resolve bundled metadata"));
 #else
   const fs::path source_root(W3X_SOURCE_DIR);
+  const fs::path bundled =
+      source_root / "data" / "zhCN-1.32.8" / "prebuilt";
+  if (fs::exists(bundled)) {
+    return bundled;
+  }
   const fs::path preferred =
       source_root / "external" / "data" / "zhCN-1.32.8" / "prebuilt";
   if (fs::exists(preferred)) {
@@ -392,7 +404,8 @@ core::Result<std::unordered_map<std::string, std::string>> LoadSlkCodeMap(
   for (int col = 0; col < table.num_columns; ++col) {
     const std::string normalized = NormalizeKey(table.GetCell(0, col));
     if (normalized == "alias" || normalized == "unitid" ||
-        normalized == "itemid" || normalized == "upgradeid") {
+        normalized == "itemid" || normalized == "upgradeid" ||
+        normalized == "destructableid" || normalized == "doodid") {
       alias_col = col;
     } else if (normalized == "code") {
       code_col = col;

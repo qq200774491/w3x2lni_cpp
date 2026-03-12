@@ -15,9 +15,8 @@ struct GeneratedMapFile {
   std::vector<std::uint8_t> content;
 };
 
-// Generates missing obj-side files (war3map.w3a/w3u/w3t/w3q/w3h and
-// war3mapmisc.txt) from the unpacked map directory using the same external
-// metadata that the original Lua implementation relies on.
+// Generates missing obj-side files (war3map.w3a/w3b/w3d/w3u/w3t/w3q/w3h and
+// war3mapmisc.txt) from the unpacked map directory using bundled metadata.
 core::Result<std::vector<GeneratedMapFile>> GenerateSyntheticMapFiles(
     const std::filesystem::path& input_dir);
 

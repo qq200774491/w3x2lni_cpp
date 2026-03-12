@@ -322,9 +322,19 @@ core::Result<void> WriteImportList(const fs::path& workspace_dir) {
 core::Result<fs::path> ResolveLocaleDirectory() {
 #ifndef W3X_SOURCE_DIR
   return std::unexpected(core::Error::ConfigError(
-      "W3X_SOURCE_DIR is not defined; cannot resolve locale files"));
+      "W3X_SOURCE_DIR is not defined; cannot resolve bundled locale files"));
 #else
   const fs::path source_root(W3X_SOURCE_DIR);
+  const fs::path bundled_zhcn = source_root / "data" / "locale" / "zhCN";
+  if (fs::exists(bundled_zhcn / "w3i.lng") &&
+      fs::exists(bundled_zhcn / "lml.lng")) {
+    return bundled_zhcn;
+  }
+  const fs::path bundled_enus = source_root / "data" / "locale" / "enUS";
+  if (fs::exists(bundled_enus / "w3i.lng") &&
+      fs::exists(bundled_enus / "lml.lng")) {
+    return bundled_enus;
+  }
   const fs::path zhcn = source_root / "external" / "script" / "locale" / "zhCN";
   if (fs::exists(zhcn / "w3i.lng") && fs::exists(zhcn / "lml.lng")) {
     return zhcn;
@@ -468,6 +478,11 @@ std::string ToFlatPath(const std::string& workspace_relative_path) {
 core::Result<void> ConvertFlatDirectoryToWorkspace(
     const fs::path& flat_dir, const fs::path& workspace_dir) {
   W3X_RETURN_IF_ERROR(ConvertDirectory(flat_dir, workspace_dir, true));
+  return FinalizeWorkspaceDirectory(flat_dir, workspace_dir);
+}
+
+core::Result<void> FinalizeWorkspaceDirectory(
+    const fs::path& flat_dir, const fs::path& workspace_dir) {
   W3X_RETURN_IF_ERROR(
       core::FilesystemUtils::WriteBinaryFile(workspace_dir / ".w3x",
                                              BuildWorkspaceMarker())

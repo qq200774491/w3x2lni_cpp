@@ -195,21 +195,32 @@ void TestDirectoryModeCommands() {
   fs::create_directories(map_dir / "scripts");
   fs::create_directories(map_dir / "units");
   fs::create_directories(map_dir / "ui");
+  fs::create_directories(map_dir / "textures");
+  fs::create_directories(map_dir / "sound");
 
   WriteBinary(map_dir / "war3map.w3i", BuildMinimalW3i());
   WriteText(map_dir / "scripts" / "war3map.j", "function main takes nothing returns nothing\nendfunction\n");
   WriteText(map_dir / "units" / "war3map.w3u", "raw object data");
   WriteText(map_dir / "war3map.wts", "STRING 1\n{\nHello\n}\n");
   WriteText(map_dir / "ui" / "Frame.fdf", "Frame \"SIMPLEFRAME\" \"Test\" {}\n");
+  WriteText(map_dir / "textures" / "Preview.blp", "fake texture");
+  WriteText(map_dir / "sound" / "Theme.mp3", "fake sound");
 
   w3x_toolkit::cli::ConvertCommand convert;
   auto convert_result =
       convert.Execute({map_dir.string(), convert_out.string()});
   Expect(convert_result.has_value(), "Convert command should succeed");
+  ExpectFileExists(convert_out / ".w3x");
   ExpectFileExists(convert_out / "map" / "war3map.w3i");
   ExpectFileExists(convert_out / "map" / "war3map.wts");
   ExpectFileExists(convert_out / "table" / "units" / "war3map.ini");
   ExpectFileExists(convert_out / "trigger" / "scripts" / "war3map.j");
+  ExpectFileExists(convert_out / "resource" / "textures" / "Preview.blp");
+  ExpectFileExists(convert_out / "sound" / "sound" / "Theme.mp3");
+  ExpectFileExists(convert_out / "table" / "w3i.ini");
+  ExpectFileExists(convert_out / "table" / "imp.ini");
+  ExpectFileExists(convert_out / "w3x2lni" / "locale" / "w3i.lng");
+  ExpectFileExists(convert_out / "w3x2lni" / "locale" / "lml.lng");
   ExpectFileExists(convert_out / "w3x2lni.ini");
 
   w3x_toolkit::cli::ExtractCommand extract;
@@ -273,10 +284,15 @@ void TestPackedArchiveCommands() {
       {packed_map.string(), convert_out.string(), "--no-table-data"});
   Expect(convert_result.has_value(),
          "Convert command should accept packed map input");
+  ExpectFileExists(convert_out / ".w3x");
   ExpectFileExists(convert_out / "map" / "war3map.w3i");
   ExpectFileExists(convert_out / "map" / "war3map.wts");
   ExpectFileExists(convert_out / "trigger" / "war3map.j");
   ExpectFileExists(convert_out / "trigger" / "scripts" / "helper.lua");
+  ExpectFileExists(convert_out / "table" / "w3i.ini");
+  ExpectFileExists(convert_out / "table" / "imp.ini");
+  ExpectFileExists(convert_out / "w3x2lni" / "locale" / "w3i.lng");
+  ExpectFileExists(convert_out / "w3x2lni" / "locale" / "lml.lng");
   ExpectFileExists(convert_out / "w3x2lni.ini");
 }
 
@@ -295,6 +311,8 @@ void TestPackUnpackRoundTrip() {
             "function main takes nothing returns nothing\nendfunction\n");
   WriteText(map_dir / "ability.ini",
             "[A000]\nName=TestAbility\nTip=Test Tip\n");
+  WriteText(map_dir / "destructable.ini", "[ATg1]\nName=TestGate\nHP=123\n");
+  WriteText(map_dir / "doodad.ini", "[ACt0]\nName=TestStall\nnumVar=2\n");
   WriteText(map_dir / "misc.ini", "[HERO]\nName=Test Hero\n");
   WriteText(map_dir / "units" / "abilitydata.slk",
             "ID;PWXL;N;E\n"
@@ -318,8 +336,12 @@ void TestPackUnpackRoundTrip() {
   ExpectFileExists(unpacked_dir / "map" / "war3map.w3i");
   ExpectFileExists(unpacked_dir / "map" / "war3map.j");
   ExpectFileExists(unpacked_dir / "table" / "ability.ini");
+  ExpectFileExists(unpacked_dir / "table" / "destructable.ini");
+  ExpectFileExists(unpacked_dir / "table" / "doodad.ini");
   ExpectFileExists(unpacked_dir / "table" / "units" / "abilitydata.slk");
   ExpectFileExists(unpacked_dir / "map" / "war3map.w3a");
+  ExpectFileExists(unpacked_dir / "map" / "war3map.w3b");
+  ExpectFileExists(unpacked_dir / "map" / "war3map.w3d");
   ExpectFileExists(unpacked_dir / "map" / "war3mapmisc.txt");
   ExpectFileExists(unpacked_dir / "w3x2lni" / ".w3x_manifest.json");
 
@@ -333,6 +355,20 @@ void TestPackUnpackRoundTrip() {
          "Custom object should preserve its parent rawcode");
   Expect(ability_obj->custom_objects[0].custom_id == "A000",
          "Custom object should preserve its custom rawcode");
+
+  auto destructable_obj =
+      w3x_toolkit::parser::w3u::ParseW3b(
+          ReadBinary(unpacked_dir / "map" / "war3map.w3b"));
+  Expect(destructable_obj.has_value(),
+         "Generated war3map.w3b should be parseable");
+  Expect(!destructable_obj->original_objects.empty(),
+         "Generated war3map.w3b should contain one original object");
+
+  auto doodad_obj = w3x_toolkit::parser::w3u::ParseW3d(
+      ReadBinary(unpacked_dir / "map" / "war3map.w3d"));
+  Expect(doodad_obj.has_value(), "Generated war3map.w3d should be parseable");
+  Expect(!doodad_obj->original_objects.empty(),
+         "Generated war3map.w3d should contain one original object");
 
   WriteText(unpacked_dir / "table" / "units" / "abilitydata.slk",
             ReadText(unpacked_dir / "table" / "units" / "abilitydata.slk") +
@@ -351,6 +387,8 @@ void TestPackUnpackRoundTrip() {
          "Unpack command should unpack repacked archive");
   ExpectFileExists(repacked_unpacked_dir / ".w3x");
   ExpectFileExists(repacked_unpacked_dir / "map" / "war3map.w3a");
+  ExpectFileExists(repacked_unpacked_dir / "map" / "war3map.w3b");
+  ExpectFileExists(repacked_unpacked_dir / "map" / "war3map.w3d");
   ExpectFileExists(repacked_unpacked_dir / "map" / "war3mapmisc.txt");
   Expect(ReadText(repacked_unpacked_dir / "table" / "units" / "abilitydata.slk")
              .find("roundtrip") != std::string::npos,

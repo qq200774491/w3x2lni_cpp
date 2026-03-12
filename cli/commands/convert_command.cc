@@ -54,11 +54,11 @@ class TemporaryDirectory {
 std::string ConvertCommand::Name() const { return "convert"; }
 
 std::string ConvertCommand::Description() const {
-  return "Convert an unpacked map directory to the LNI workspace layout";
+  return "Convert a directory or packed map to the LNI workspace layout";
 }
 
 std::string ConvertCommand::Usage() const {
-  return "convert <input_map_dir> <output_dir> "
+  return "convert <input_map_dir|input_map.w3x|input_map.w3m> <output_dir> "
          "[--no-map-files] [--no-table-data] [--no-triggers] [--no-config]";
 }
 

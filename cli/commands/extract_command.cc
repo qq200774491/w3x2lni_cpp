@@ -20,11 +20,11 @@ namespace w3x_toolkit::cli {
 std::string ExtractCommand::Name() const { return "extract"; }
 
 std::string ExtractCommand::Description() const {
-  return "Extract resources from an unpacked map directory";
+  return "Extract resources from a directory or packed map";
 }
 
 std::string ExtractCommand::Usage() const {
-  return "extract <input_map_dir> <output_dir> "
+  return "extract <input_map_dir|input_map.w3x|input_map.w3m> <output_dir> "
          "[--type=all|models|textures|sounds|scripts|ui|data|map]";
 }
 

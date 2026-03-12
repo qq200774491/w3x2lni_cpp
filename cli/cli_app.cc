@@ -15,8 +15,11 @@
 #include "cli/commands/analyze_command.h"
 #include "cli/commands/convert_command.h"
 #include "cli/commands/extract_command.h"
+#include "cli/commands/help_command.h"
+#include "cli/commands/lni_command.h"
 #include "cli/commands/pack_command.h"
 #include "cli/commands/unpack_command.h"
+#include "cli/commands/version_command.h"
 #include "core/error/error.h"
 #include "core/logger/logger.h"
 
@@ -152,7 +155,22 @@ void CliApp::PrintVersion() {
 
 void CliApp::RegisterDefaultCommands() {
   // Ignore registration errors here -- these are guaranteed unique names.
+  (void)RegisterCommand(std::make_unique<HelpCommand>(
+      [this]() { PrintHelp(); },
+      [this](const std::string& name) {
+        Command* command = FindCommand(name);
+        if (command == nullptr) {
+          return false;
+        }
+        std::cout << "Usage: " << kAppName << " " << command->Usage()
+                  << std::endl;
+        std::cout << std::endl;
+        std::cout << "  " << command->Description() << std::endl;
+        return true;
+      }));
+  (void)RegisterCommand(std::make_unique<VersionCommand>());
   (void)RegisterCommand(std::make_unique<ConvertCommand>());
+  (void)RegisterCommand(std::make_unique<LniCommand>());
   (void)RegisterCommand(std::make_unique<ExtractCommand>());
   (void)RegisterCommand(std::make_unique<AnalyzeCommand>());
   (void)RegisterCommand(std::make_unique<UnpackCommand>());

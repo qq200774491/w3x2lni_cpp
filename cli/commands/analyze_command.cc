@@ -107,11 +107,11 @@ void PrintW3iSummary(const std::filesystem::path& input_path) {
 std::string AnalyzeCommand::Name() const { return "analyze"; }
 
 std::string AnalyzeCommand::Description() const {
-  return "Analyze an unpacked map directory and print resource statistics";
+  return "Analyze a directory or packed map and print resource statistics";
 }
 
 std::string AnalyzeCommand::Usage() const {
-  return "analyze <input_map_dir>";
+  return "analyze <input_map_dir|input_map.w3x|input_map.w3m>";
 }
 
 core::Result<void> AnalyzeCommand::Execute(
