@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -49,9 +50,6 @@ bool IsTablePath(std::string_view path) {
       "ability.ini",        "destructable.ini", "doodad.ini",
       "buff.ini",           "upgrade.ini",      "item.ini",
       "unit.ini",           "misc.ini",         "txt.ini",
-      "war3map.w3u",        "war3map.w3t",      "war3map.w3a",
-      "war3map.w3b",        "war3map.w3d",      "war3map.w3q",
-      "war3map.w3h",        "war3mapmisc.txt",
   };
   const std::string normalized = Lower(Normalize(std::string(path)));
   if (kTableFiles.contains(normalized)) {
@@ -60,10 +58,10 @@ bool IsTablePath(std::string_view path) {
   return StartsWith(normalized, "units/") || StartsWith(normalized, "doodads/");
 }
 
-bool IsTriggerPath(std::string_view path) {
+bool IsMapPath(std::string_view path) {
   const std::string normalized = Lower(Normalize(std::string(path)));
-  return normalized == "war3map.j" || normalized == "war3map.lua" ||
-         normalized == "war3map.wtg" || normalized == "war3map.wct" ||
+  return StartsWith(normalized, "war3map") ||
+         StartsWith(normalized, "war3campaign") ||
          StartsWith(normalized, "scripts/");
 }
 
@@ -75,6 +73,25 @@ bool IsResourcePath(std::string_view path) {
 
 bool IsSoundPath(std::string_view path) {
   return HasExtension(path, ".wav") || HasExtension(path, ".mp3");
+}
+
+core::Result<fs::path> ResolveLocaleDirectory() {
+#ifndef W3X_SOURCE_DIR
+  return std::unexpected(core::Error::ConfigError(
+      "W3X_SOURCE_DIR is not defined; cannot resolve locale files"));
+#else
+  const fs::path source_root(W3X_SOURCE_DIR);
+  const fs::path zhcn = source_root / "external" / "script" / "locale" / "zhCN";
+  if (fs::exists(zhcn / "w3i.lng") && fs::exists(zhcn / "lml.lng")) {
+    return zhcn;
+  }
+  const fs::path enus = source_root / "external" / "script" / "locale" / "enUS";
+  if (fs::exists(enus / "w3i.lng") && fs::exists(enus / "lml.lng")) {
+    return enus;
+  }
+  return std::unexpected(core::Error::FileNotFound(
+      "No locale directory with w3i.lng and lml.lng was found"));
+#endif
 }
 
 core::Result<void> CopyOneFile(const fs::path& source, const fs::path& target) {
@@ -90,6 +107,19 @@ core::Result<void> CopyOneFile(const fs::path& source, const fs::path& target) {
         return core::Error::IOError("Failed to write '" + target.string() +
                                     "': " + error);
       });
+}
+
+std::vector<std::uint8_t> BuildWorkspaceMarker() {
+  std::vector<std::uint8_t> bytes(12, 0);
+  bytes[0] = static_cast<std::uint8_t>('H');
+  bytes[1] = static_cast<std::uint8_t>('M');
+  bytes[2] = static_cast<std::uint8_t>('3');
+  bytes[3] = static_cast<std::uint8_t>('W');
+  bytes[8] = static_cast<std::uint8_t>('W');
+  bytes[9] = static_cast<std::uint8_t>('2');
+  bytes[10] = static_cast<std::uint8_t>('L');
+  bytes[11] = 0x01;
+  return bytes;
 }
 
 core::Result<void> ConvertDirectory(const fs::path& source_dir,
@@ -143,34 +173,37 @@ std::string ToWorkspacePath(const std::string& flat_relative_path) {
   if (normalized == std::string(kUnpackManifestFileName)) {
     return "w3x2lni/" + normalized;
   }
-  if (IsTablePath(normalized)) {
-    return "table/" + normalized;
-  }
-  if (IsTriggerPath(normalized)) {
-    return "trigger/" + normalized;
-  }
   if (IsResourcePath(normalized)) {
     return "resource/" + normalized;
   }
   if (IsSoundPath(normalized)) {
     return "sound/" + normalized;
   }
+  if (IsMapPath(normalized)) {
+    return "map/" + normalized;
+  }
+  if (IsTablePath(normalized)) {
+    return "table/" + normalized;
+  }
   return "map/" + normalized;
 }
 
 std::string ToFlatPath(const std::string& workspace_relative_path) {
   const std::string normalized = Normalize(workspace_relative_path);
+  if (normalized == ".w3x") {
+    return "";
+  }
   auto strip_prefix = [&](std::string_view prefix) -> std::string {
     return normalized.substr(prefix.size());
   };
   if (StartsWith(normalized, "table/")) {
     return strip_prefix("table/");
   }
-  if (StartsWith(normalized, "trigger/")) {
-    return strip_prefix("trigger/");
-  }
   if (StartsWith(normalized, "map/")) {
     return strip_prefix("map/");
+  }
+  if (StartsWith(normalized, "trigger/")) {
+    return strip_prefix("trigger/");
   }
   if (StartsWith(normalized, "resource/")) {
     return strip_prefix("resource/");
@@ -190,7 +223,22 @@ std::string ToFlatPath(const std::string& workspace_relative_path) {
 
 core::Result<void> ConvertFlatDirectoryToWorkspace(
     const fs::path& flat_dir, const fs::path& workspace_dir) {
-  return ConvertDirectory(flat_dir, workspace_dir, true);
+  W3X_RETURN_IF_ERROR(ConvertDirectory(flat_dir, workspace_dir, true));
+  W3X_RETURN_IF_ERROR(
+      core::FilesystemUtils::WriteBinaryFile(workspace_dir / ".w3x",
+                                             BuildWorkspaceMarker())
+          .transform_error([&workspace_dir](const std::string& error) {
+            return core::Error::IOError(
+                "Failed to write workspace marker in '" +
+                workspace_dir.string() + "': " + error);
+          }));
+
+  W3X_ASSIGN_OR_RETURN(auto locale_dir, ResolveLocaleDirectory());
+  W3X_RETURN_IF_ERROR(CopyOneFile(locale_dir / "w3i.lng",
+                                  workspace_dir / "w3x2lni" / "locale" / "w3i.lng"));
+  W3X_RETURN_IF_ERROR(CopyOneFile(locale_dir / "lml.lng",
+                                  workspace_dir / "w3x2lni" / "locale" / "lml.lng"));
+  return {};
 }
 
 core::Result<void> ConvertWorkspaceToFlatDirectory(
