@@ -74,7 +74,13 @@ core::Result<core::ConfigManager> LoadRuntimeConfig(
 parser::w3x::PackOptions BuildSlkPackOptions(const core::ConfigManager& config) {
   parser::w3x::PackOptions options;
   options.profile = parser::w3x::PackProfile::kSlk;
+  options.read_slk = config.GetBool("slk", "read_slk", true);
   options.slk_doodad = config.GetBool("slk", "slk_doodad", true);
+  options.remove_unused_objects =
+      config.GetBool("slk", "remove_unuse_object", true);
+  options.remove_we_only = config.GetBool("slk", "remove_we_only", true);
+  options.remove_same = config.GetBool("slk", "remove_same", false);
+  options.computed_text = config.GetBool("slk", "computed_text", true);
   return options;
 }
 

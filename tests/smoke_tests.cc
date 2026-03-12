@@ -19,9 +19,11 @@
 #include "cli/commands/log_command.h"
 #include "cli/commands/obj_command.h"
 #include "cli/commands/pack_command.h"
+#include "cli/commands/slk_command.h"
 #include "cli/commands/template_command.h"
 #include "cli/commands/unpack_command.h"
 #include "core/filesystem/filesystem_utils.h"
+#include "parser/slk/slk_parser.h"
 #include "parser/w3x/map_archive_io.h"
 #include "parser/w3u/w3u_parser.h"
 #include "parser/w3u/w3u_writer.h"
@@ -227,19 +229,33 @@ void WriteMinimalRuntimeData(const fs::path& root) {
             "extra_check = false\n"
             "\n"
             "[slk]\n"
+            "read_slk = true\n"
             "remove_unuse_object = true\n"
             "optimize_jass = true\n"
             "mdx_squf = true\n"
             "remove_we_only = true\n"
             "slk_doodad = true\n"
             "find_id_times = 10\n"
+            "remove_same = false\n"
             "confused = false\n"
             "confusion = abc123_\n"
+            "computed_text = true\n"
+            "export_lua = true\n"
             "extra_check = false\n"
             "\n"
             "[obj]\n"
             "read_slk = false\n"
+            "remove_unuse_object = false\n"
+            "optimize_jass = false\n"
+            "mdx_squf = false\n"
+            "remove_we_only = false\n"
+            "slk_doodad = false\n"
             "find_id_times = 0\n"
+            "remove_same = true\n"
+            "confused = false\n"
+            "confusion = abc123_\n"
+            "computed_text = false\n"
+            "export_lua = true\n"
             "extra_check = false\n");
 
   WriteText(data_root / "zhCN-1.32.8" / "prebuilt" / "Melee" / "ability.ini",
@@ -656,6 +672,137 @@ void TestObjCommandAndArchiveFiltering() {
          "Unpack should derive ability.ini back from the Obj archive");
 }
 
+void TestSlkCommandGenerationCleanupAndSidecars() {
+  TemporaryDirectory temp;
+  w3x_toolkit::cli::SlkCommand slk;
+
+  const fs::path passthrough_workspace = temp.path() / "slk_passthrough";
+  const fs::path passthrough_map = temp.path() / "slk_passthrough.w3x";
+  const fs::path passthrough_raw = temp.path() / "slk_passthrough_raw";
+  fs::create_directories(passthrough_workspace / "map");
+  fs::create_directories(passthrough_workspace / "table" / "units");
+  WriteBinary(passthrough_workspace / ".w3x",
+              std::vector<std::uint8_t>{'H', 'M', '3', 'W'});
+  WriteBinary(passthrough_workspace / "map" / "war3map.w3i",
+              BuildMinimalW3i());
+  WriteText(passthrough_workspace / "map" / "war3map.w3a",
+            "legacy ability object");
+  WriteText(passthrough_workspace / "map" / "war3map.wtg", "legacy wtg");
+  WriteText(passthrough_workspace / "map" / "war3map.wct", "legacy wct");
+  WriteText(passthrough_workspace / "map" / "war3map.w3r", "legacy regions");
+  WriteText(passthrough_workspace / "map" / "war3map.wts",
+            "STRING 1\n{\nPassthrough\n}\n");
+  WriteText(passthrough_workspace / "table" / "units" /
+                "campaignabilitystrings.txt",
+            "Passthrough campaign ability strings\n");
+  WriteText(passthrough_workspace / "table" / "units" / "abilitydata.slk",
+            "ID;PWXL;N;E\n"
+            "B;X2;Y2;D0\n"
+            "C;X1;Y1;K\"alias\"\n"
+            "C;X2;K\"code\"\n"
+            "C;X1;Y2;K\"A000\"\n"
+            "C;X2;K\"ANcl\"\n"
+            "E\n");
+
+  auto passthrough_result =
+      slk.Execute({passthrough_workspace.string(), passthrough_map.string()});
+  Expect(passthrough_result.has_value(),
+         "Slk command should pack a workspace containing existing slk/txt files");
+  auto passthrough_unpack_result =
+      w3x_toolkit::parser::w3x::UnpackMapArchive(passthrough_map,
+                                                 passthrough_raw);
+  Expect(passthrough_unpack_result.has_value(),
+         "Passthrough slk archive should unpack");
+  Expect(!fs::exists(passthrough_raw / "war3map.w3a"),
+         "Existing covered SLK data should suppress redundant war3map.w3a");
+  Expect(!fs::exists(passthrough_raw / "war3map.wtg"),
+         "remove_we_only should drop war3map.wtg from slk output");
+  Expect(!fs::exists(passthrough_raw / "war3map.wct"),
+         "remove_we_only should drop war3map.wct from slk output");
+  Expect(!fs::exists(passthrough_raw / "war3map.w3r"),
+         "remove_we_only should drop war3map.w3r from slk output");
+  ExpectFileExists(passthrough_raw / "units" / "abilitydata.slk");
+  ExpectFileExists(passthrough_raw / "units" / "campaignabilitystrings.txt");
+  ExpectFileExists(passthrough_raw / "war3map.wts");
+
+  const fs::path generated_workspace = temp.path() / "slk_generated";
+  const fs::path generated_map = temp.path() / "slk_generated.w3x";
+  const fs::path generated_raw = temp.path() / "slk_generated_raw";
+  fs::create_directories(generated_workspace / "map");
+  fs::create_directories(generated_workspace / "table");
+  WriteBinary(generated_workspace / ".w3x",
+              std::vector<std::uint8_t>{'H', 'M', '3', 'W'});
+  WriteBinary(generated_workspace / "map" / "war3map.w3i",
+              BuildMinimalW3i());
+  WriteText(generated_workspace / "map" / "war3map.w3a",
+            "stale object should be suppressed");
+  WriteText(generated_workspace / "table" / "ability.ini",
+            "[A000]\n_parent=ANcl\nname=GeneratedSlkAbility\n");
+
+  auto generated_result =
+      slk.Execute({generated_workspace.string(), generated_map.string()});
+  Expect(generated_result.has_value(),
+         "Slk command should generate slk output from ability.ini");
+  auto generated_unpack_result =
+      w3x_toolkit::parser::w3x::UnpackMapArchive(generated_map, generated_raw);
+  Expect(generated_unpack_result.has_value(),
+         "Generated slk archive should unpack");
+  Expect(!fs::exists(generated_raw / "war3map.w3a"),
+         "Ability ini covered by generated slk should suppress war3map.w3a");
+  ExpectFileExists(generated_raw / "units" / "abilitydata.slk");
+  auto generated_slk = w3x_toolkit::parser::slk::ParseSlk(
+      ReadText(generated_raw / "units" / "abilitydata.slk"));
+  Expect(generated_slk.has_value(),
+         "Generated abilitydata.slk should be parseable");
+  int alias_col = -1;
+  int code_col = -1;
+  for (int col = 0; col < generated_slk->num_columns; ++col) {
+    const std::string header = generated_slk->GetCell(0, col);
+    if (header == "alias") {
+      alias_col = col;
+    } else if (header == "code") {
+      code_col = col;
+    }
+  }
+  Expect(alias_col >= 0 && code_col >= 0,
+         "Generated abilitydata.slk should contain alias/code headers");
+  Expect(generated_slk->GetCell(1, alias_col) == "A000",
+         "Generated abilitydata.slk should preserve alias");
+  Expect(generated_slk->GetCell(1, code_col) == "ANcl",
+         "Generated abilitydata.slk should preserve parent rawcode");
+
+  const fs::path raw_workspace = temp.path() / "slk_raw_fallback";
+  const fs::path raw_map = temp.path() / "slk_raw_fallback.w3x";
+  const fs::path raw_archive = temp.path() / "slk_raw_fallback_raw";
+  fs::create_directories(raw_workspace / "map");
+  fs::create_directories(raw_workspace / "table");
+  WriteBinary(raw_workspace / ".w3x",
+              std::vector<std::uint8_t>{'H', 'M', '3', 'W'});
+  WriteBinary(raw_workspace / "map" / "war3map.w3i", BuildMinimalW3i());
+  WriteText(raw_workspace / "table" / "ability.ini",
+            "[A000]\n"
+            "_parent=ANcl\n"
+            "name=RawFallbackAbility\n"
+            "raw(zzzz,3,2,7)=mystery-value\n");
+
+  auto raw_result = slk.Execute({raw_workspace.string(), raw_map.string()});
+  Expect(raw_result.has_value(),
+         "Slk command should still succeed when raw fields require obj fallback");
+  auto raw_unpack_result =
+      w3x_toolkit::parser::w3x::UnpackMapArchive(raw_map, raw_archive);
+  Expect(raw_unpack_result.has_value(),
+         "Raw fallback slk archive should unpack");
+  ExpectFileExists(raw_archive / "units" / "abilitydata.slk");
+  ExpectFileExists(raw_archive / "war3map.w3a");
+
+  auto raw_ability_obj = w3x_toolkit::parser::w3u::ParseW3a(
+      ReadBinary(raw_archive / "war3map.w3a"));
+  Expect(raw_ability_obj.has_value(),
+         "Raw fallback war3map.w3a should be regenerated as a parseable object file");
+  Expect(!raw_ability_obj->custom_objects.empty(),
+         "Raw fallback war3map.w3a should contain the custom object");
+}
+
 }  // namespace
 
 int main() {
@@ -667,6 +814,7 @@ int main() {
     TestConfigTemplateAndLogCommands();
     TestConvertObjectBinaryToIniRoundTrip();
     TestObjCommandAndArchiveFiltering();
+    TestSlkCommandGenerationCleanupAndSidecars();
     std::cout << "Smoke tests passed." << std::endl;
     return 0;
   } catch (const std::exception& ex) {

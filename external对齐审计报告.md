@@ -229,6 +229,117 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这一轮完成的是“Obj 子链第一阶段对齐”。
 - `slk` 命令与真正的 Slk 目标格式语义仍然缺失。
 
+### 2026-03-12 第 12 个已落地点
+
+本轮继续完成：
+
+- CLI 新增 `slk` 命令
+- 打包层新增可区分 `obj/slk` 的 `PackOptions`
+- `slk` 命令不再只是 `obj` 的换名入口，而是开始具备真实的 Slk 侧输出选择规则：
+  - 当工作区/解包目录中已存在对应 `units/*.slk` / `doodads/*.slk`
+  - 且不存在 `ability.ini/unit.ini/...` 这类当前纯 C++ 仍需靠 Obj 承载的源数据时
+  - `slk` 模式会抑制冗余的 `war3map.w3a/w3h/w3u/w3t/w3q`，以及在 `slk.slk_doodad=true` 时抑制 `war3map.w3b/w3d`
+- 一旦存在 `ability.ini` 等 ini 源，`slk` 模式仍会回退生成对应 `war3map.w3*`，避免把当前纯 C++ 无法下沉到 SLK 的对象语义直接丢掉
+- smoke test 已覆盖：
+  - `obj` 与 `slk` 对同一工作区产生可观察差异
+  - `slk` 会保留 `units/abilitydata.slk` 并压掉冗余 `war3map.w3a`
+  - `slk` 在存在 `ability.ini` 时仍会生成可解析的 `war3map.w3a`
+
+新增/更新代码：
+
+- `parser/w3x/map_archive_io.h`
+- `parser/w3x/map_archive_io.cc`
+- `cli/commands/slk_command.h`
+- `cli/commands/slk_command.cc`
+- `cli/commands/obj_command.cc`
+- `cli/cli_app.cc`
+- `tests/smoke_tests.cc`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe help slk
+```
+
+说明：
+
+- 这一轮完成的是“Slk 子链第一阶段对齐”。
+- 目前只是把 archive 产物选择规则推进到 `external` 的同方向，并没有完成 `external` 里的完整 `SLK + TXT + WTS + WTG/WCT` 语义链。
+
+### 2026-03-12 第 13 个已落地点
+
+本轮继续完成：
+
+- `slk` 打包链新增独立模块：
+  - `parser/w3x/slk_pack_generator.*`
+  - `parser/w3x/txt_pack_generator.*`
+  - `parser/w3x/object_cleanup.*`
+- `slk` 现在已支持从以下 ini 源直接生成对应 SLK：
+  - `ability.ini -> units/abilitydata.slk`
+  - `buff.ini -> units/abilitybuffdata.slk`
+  - `item.ini -> units/itemdata.slk`
+  - `upgrade.ini -> units/upgradedata.slk`
+  - `destructable.ini -> units/destructabledata.slk`
+  - `doodad.ini -> doodads/doodads.slk`
+- 对于可以被上述 SLK 完整覆盖的对象类型，`slk` 现在会真正压掉冗余 `war3map.w3a/w3h/w3t/w3q/w3b/w3d`
+- 若对象 ini 中存在 `raw(...)` 这类当前 SLK 无法安全承载的字段，`slk` 会继续保留必要的 `war3map.w3*` sidecar，而不是误报“已完全转成 SLK”
+- `slk` 现在会集中托管已识别的 `TXT/WTS` 产物：
+  - 已识别 `units/*.txt`
+  - `doodads/doodadskins.txt`
+  - `war3mapextra.txt`
+  - `war3mapskin.txt`
+  - `war3map.wts`
+- `slk.remove_we_only` 已开始进入真实打包语义：
+  - `war3map.wtg`
+  - `war3map.wct`
+  - `war3map.imp`
+  - `war3map.w3s`
+  - `war3map.w3r`
+  - `war3map.w3c`
+  - `war3mapunits.doo`
+  会在 `slk` 输出前清理
+- smoke test 已覆盖：
+  - 现有 `units/*.slk` 覆盖 Obj 文件
+  - `ability.ini -> units/abilitydata.slk`
+  - 生成的 `abilitydata.slk` 可被纯 C++ `SLK` 解析器读取，并保留 `alias/code`
+  - `raw(...)` 触发必要的 Obj sidecar 保留
+  - `remove_we_only` 清理 WE-only 文件
+  - 已识别 `TXT/WTS` 在 `slk` 输出中被保留
+
+新增/更新代码：
+
+- `parser/w3x/slk_pack_generator.h`
+- `parser/w3x/slk_pack_generator.cc`
+- `parser/w3x/txt_pack_generator.h`
+- `parser/w3x/txt_pack_generator.cc`
+- `parser/w3x/object_cleanup.h`
+- `parser/w3x/object_cleanup.cc`
+- `parser/w3x/map_archive_io.h`
+- `parser/w3x/map_archive_io.cc`
+- `cli/commands/slk_command.cc`
+- `core/config/config_manager.cc`
+- `data/default_config.ini`
+- `tests/smoke_tests.cc`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe help slk
+```
+
+说明：
+
+- 这一轮完成的是“Slk 子链第二阶段对齐”。
+- 仍未完成：
+  - `unit.ini -> 5 份 unit*.slk` 的真正语义拆分
+  - `txt.ini` 聚合生成
+  - `war3map.wts` 的重建而非透传
+  - `remove_unuse_object/computed_text/remove_same` 的真实内容级语义
+
 ## 1. 审计目标
 
 本次审计的目标不是判断“当前项目是否可用”，而是判断：
@@ -507,14 +618,25 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 对 metadata 无法识别的字段，已新增 `raw(...)` 保底语法，确保 `convert -> pack` 时不直接丢字段
 - `pack` 现在会过滤 source-only 的对象源 `*.ini`，更接近 Obj 产物，而不是把源文件和生成物一起塞回归档
 - `unpack` 现在会从 `war3map.w3*` / `war3mapmisc.txt` 自动派生出工作区 `table/*.ini`
+- `pack/slk` 现在已开始区分 Obj 与 Slk 两类 archive 选择规则：
+  - `obj` 仍偏向保留/生成 `war3map.w3*`
+  - `slk` 则会在有覆盖性 `units/*.slk` / `doodads/*.slk` 且没有 ini 源时压掉冗余 Obj 文件
+- `slk` 现在已开始从 `ability/buff/item/upgrade/destructable/doodad.ini` 真实生成对应 `SLK`
+- `slk` 现在已开始集中处理已识别的 `TXT/WTS` 文件，并在 `remove_we_only=true` 时清理 WE-only 地图文件
+- 对于带有 `raw(...)` 的对象 ini，`slk` 现在会保留必要的 Obj sidecar，而不是误判为可完全下沉到 SLK
 - 仍然没有看到对应：
   - `txt.ini` 的完整回写链
   - `doo/w3s/w3r` 等参考项目 TODO/能力边界中的其它地图语义文件
 
 进一步问题：
 
-- 当前 `PackMapDirectory()` 虽然已经开始过滤 source-only 的对象 `*.ini`，但仍会把其它常规文本文件直接作为归档成员写回，同时再额外合成部分 `war3map.w3*` 文件。
-- 这意味着它比之前更接近 Obj 产物，但仍然不是严格产出 `external` 意义下的标准 `Obj` 或 `Slk` 目标格式。
+- 当前 `PackMapDirectory()` 虽然已经把 `slk` 推进到“ini -> slk + 已识别 txt/wts 托管 + WE-only 清理 + 必要时保留 Obj sidecar”，但它仍然只是第二阶段近似实现。
+- 它还没有完成 `external` 里的：
+  - `unit` 类型的 5 路 `SLK` 语义拆分
+  - `TXT` 脚手架与聚合输出
+  - `WTS` 重建
+  - `remove_unuse_object/computed_text/remove_same` 等真正影响产物内容的对象清理逻辑
+  - `war3mapskin.txt`、`WTG/WCT` 等关联语义收敛
 
 上面这一点属于从源码做出的合理推断，依据是：
 
@@ -524,7 +646,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 审计结论：
 
-- 当前对象链路已从“只能正向合成一部分 obj 文件”推进到“已有一条可回环的 ini <-> obj 部分链路”。
+- 当前对象链路已从“只能正向合成一部分 obj 文件”推进到“已有一条可回环的 ini <-> obj 部分链路 + 第二阶段 slk 产物链骨架”。
 - 如果目标是严格复现 `external` 的对象行为规则，当前还差很远。
 
 ### 5.4 触发器管线基本没有对齐：缺失 `WTG/WCT/LML` 体系
@@ -589,6 +711,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `lni`
 - `config`
 - `obj`
+- `slk`
 - `template`
 - `log`
 - `test`
@@ -596,12 +719,11 @@ ctest --test-dir build2 -C Release --output-on-failure
 剩余差异：
 
 - 当前没有：
-  - `slk`
   - `mpq` 型工具命令
 
 审计结论：
 
-- 这一项已从“第二阶段可用命令面对齐”推进到“第三阶段部分模式对齐”。
+- 这一项已从“第二阶段可用命令面对齐”推进到“第三阶段命令面基础对齐 + slk 第二阶段语义起步”。
 - 但离 `external` 的完整命令面仍然有明显差距。
 
 ### 5.6 配置系统：已完成第一阶段纯 C++ 分层 INI 骨架，但距离参考项目完整语义仍有差距
@@ -757,6 +879,8 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `ExtractMapFiles()` 已不再把模型/贴图/声音混放到 `map/`
 - `unpack` 现在会自动为工作区补齐对象派生表文件，而不要求这些 `*.ini` 真正存在于归档中
 - `pack` 现在不会把 source-only 对象表文件直接回塞到归档
+- `slk` 打包现在会把已识别 `TXT/WTS` 文件纳入集中产物集合，而不是完全靠普通文件透传
+- `slk.remove_we_only` 现在已开始影响打包前清理结果，WE-only 文件不会再被原样带进 `slk` 输出
 
 仍然存在的不一致：
 
@@ -885,7 +1009,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 这部分不是直接拿来和 `external` 对比得出的结论，而是当前仓库内部已经暴露出的风险。
 
-### 6.1 `remove_unused_objects` / `inline_wts_strings` 选项仍未参与真实转换，只是开始接入配置层
+### 6.1 `remove_unused_objects` / `computed_text` / `inline_wts_strings` 仍未参与真实内容级转换，只有 `remove_we_only` 开始进入 `slk` 打包语义
 
 证据：
 
@@ -897,11 +1021,12 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 选项结构里有这些字段。
 - `WriteConfig()` 会把它们写到 `w3x2lni.ini`。
 - `convert` 现在会读取分层 INI 配置，并把工作区配置输出到 `w3x2lni/config.ini`。
-- 但转换流程中仍然没有看到真正使用这些选项做对象裁剪或字符串内联等行为分支。
+- `slk.remove_we_only` 现在已开始参与真实打包清理。
+- 但 `remove_unused_objects`、`computed_text`、`inline_wts_strings` 仍然没有看到真正的内容级转换分支。
 
 结论：
 
-- 当前有“接口看起来像能力已存在，但实现还没接上”的情况。
+- 当前有“部分开关已经开始接上，另一部分仍停留在接口层”的情况。
 
 ### 6.2 `JASS` parser 已存在，但没有形成真正可交付能力
 

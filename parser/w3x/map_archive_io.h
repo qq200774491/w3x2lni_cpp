@@ -24,6 +24,11 @@ enum class PackProfile : std::uint8_t {
 struct PackOptions {
   PackProfile profile = PackProfile::kDefault;
   bool slk_doodad = true;
+  bool read_slk = false;
+  bool remove_unused_objects = false;
+  bool remove_we_only = false;
+  bool remove_same = false;
+  bool computed_text = false;
 };
 
 enum class ArchiveNameStatus : std::uint8_t {

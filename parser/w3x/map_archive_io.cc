@@ -20,7 +20,10 @@
 #include <nlohmann/json.hpp>
 
 #include "core/filesystem/filesystem_utils.h"
+#include "parser/w3x/object_cleanup.h"
 #include "parser/w3x/object_pack_generator.h"
+#include "parser/w3x/slk_pack_generator.h"
+#include "parser/w3x/txt_pack_generator.h"
 #include "parser/w3x/workspace_layout.h"
 #include "parser/w3x/w3x_parser.h"
 
@@ -201,9 +204,15 @@ bool HasCoveringSlkSource(const fs::path& input_dir,
 
 bool ShouldSuppressObjectFileForSlk(const fs::path& input_dir,
                                     std::string_view relative_path,
+                                    const std::unordered_set<std::string>&
+                                        covered_object_files,
                                     const PackOptions& options) {
   if (options.profile != PackProfile::kSlk) {
     return false;
+  }
+  const std::string normalized = NormalizeArchivePath(std::string(relative_path));
+  if (covered_object_files.contains(normalized)) {
+    return true;
   }
   const SlkBackedObjectSpec* spec = FindSlkBackedObjectSpec(relative_path);
   if (spec == nullptr) {
@@ -616,15 +625,30 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
   }
   const fs::path resolved_input_dir = absolute_result.value();
 
+  W3X_RETURN_IF_ERROR(ApplyPackCleanupPasses(resolved_input_dir, options));
+
   W3X_ASSIGN_OR_RETURN(auto synthetic_files,
                        GenerateSyntheticMapFiles(resolved_input_dir));
+  W3X_ASSIGN_OR_RETURN(auto synthetic_slk,
+                       GenerateSyntheticSlkFiles(resolved_input_dir, options));
+  synthetic_files.insert(
+      synthetic_files.end(),
+      std::make_move_iterator(synthetic_slk.generated_files.begin()),
+      std::make_move_iterator(synthetic_slk.generated_files.end()));
+  W3X_ASSIGN_OR_RETURN(auto synthetic_txt,
+                       GenerateSyntheticTxtFiles(resolved_input_dir, options));
+  synthetic_files.insert(
+      synthetic_files.end(),
+      std::make_move_iterator(synthetic_txt.generated_files.begin()),
+      std::make_move_iterator(synthetic_txt.generated_files.end()));
   if (options.profile == PackProfile::kSlk) {
     synthetic_files.erase(
         std::remove_if(
             synthetic_files.begin(), synthetic_files.end(),
             [&](const GeneratedMapFile& generated) {
               return ShouldSuppressObjectFileForSlk(
-                  resolved_input_dir, generated.relative_path, options);
+                  resolved_input_dir, generated.relative_path,
+                  synthetic_slk.covered_object_files, options);
             }),
         synthetic_files.end());
   }
@@ -660,7 +684,9 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
     if (IsSourceOnlyGeneratedTableFile(relative)) {
       continue;
     }
-    if (ShouldSuppressObjectFileForSlk(resolved_input_dir, relative, options)) {
+    if (ShouldSuppressObjectFileForSlk(resolved_input_dir, relative,
+                                       synthetic_slk.covered_object_files,
+                                       options)) {
       continue;
     }
     if (synthetic_relative_paths.contains(relative)) {

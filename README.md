@@ -31,6 +31,12 @@
 - `obj <input_map_dir|input_map.w3x|input_map.w3m> [output_map.w3x|output_map.w3m]`
   - 将目录或 packed map 转为当前纯 C++ 可生成的 Obj 风格打包地图
   - 默认输出 `<stem>_obj.w3x`
+- `slk <input_map_dir|input_map.w3x|input_map.w3m> [output_map.w3x|output_map.w3m]`
+  - 将目录或 packed map 转为第二阶段 Slk 风格打包地图
+  - 已支持从 `ability/buff/item/upgrade/destructable/doodad.ini` 生成对应 `SLK`
+  - 已集中托管已识别的 `TXT/WTS` 输出，并在 `remove_we_only=true` 时清理 `WTG/WCT/W3R/...` 等 WE-only 文件
+  - 对仅能由 `SLK` 覆盖的对象会抑制冗余 `war3map.w3*`；若存在 `raw(...)` 等当前 `SLK` 无法安全承载的字段，则会保留必要的 `OBJ` sidecar
+  - 默认输出 `<stem>_slk.w3x`
 - `test`
   - 发现并执行同目录或构建目录中的 `w3x_smoke_tests`
 - `unpack <input_map.w3x|input_map.w3m> <output_dir>`
@@ -86,6 +92,7 @@ external/     原 Lua 项目参考资料，不参与新构建
 - `config/template/log` smoke test 已通过
 - `war3map.w3a -> ability.ini -> pack -> unpack` 与未知字段 `raw(...)` 回环 smoke test 已通过
 - `obj` 命令与 `pack/unpack` 的对象源过滤 smoke test 已通过
+- `slk` 命令对 `SLK` 生成、`TXT/WTS` 托管、WE-only 清理与必要 `OBJ` sidecar 保留的 smoke test 已通过
 - 对仓库内实图 `雷之呼吸—壹式——霹雳一闪 -.w3x` 已验证：
   - 核心地图文件恢复
   - `ability.ini/unit.ini/upgrade.ini/buff.ini/item.ini/txt.ini/misc.ini` 恢复

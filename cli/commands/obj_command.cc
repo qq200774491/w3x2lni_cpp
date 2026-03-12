@@ -53,6 +53,11 @@ std::filesystem::path DefaultOutputPath(const std::filesystem::path& input_path)
 parser::w3x::PackOptions BuildObjPackOptions() {
   parser::w3x::PackOptions options;
   options.profile = parser::w3x::PackProfile::kObj;
+  options.read_slk = false;
+  options.remove_unused_objects = false;
+  options.remove_we_only = false;
+  options.remove_same = true;
+  options.computed_text = false;
   return options;
 }
 
