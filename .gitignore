@@ -3,6 +3,7 @@ external/
 .claude/
 # Markdown files
 *.md
+*.log
 *.w3x
 
 !README.md
@@ -11,6 +12,7 @@ external/
 # Build artifacts
 # ==============================================================================
 build/
+build2/
 cmake-build-*/
 out/
 
@@ -57,3 +59,4 @@ compile_commands.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
