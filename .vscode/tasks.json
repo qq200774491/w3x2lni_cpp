@@ -1,0 +1,159 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "配置 Debug",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build/debug",
+        "-G",
+        "Visual Studio 17 2022",
+        "-A",
+        "x64",
+        "-DW3X_BUILD_TESTS=OFF"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Debug 编译",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build/debug",
+        "--config",
+        "Debug",
+        "--target",
+        "w3x_tool",
+        "--parallel"
+      ],
+      "dependsOn": [
+        "配置 Debug"
+      ],
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "detail": "配置并编译 Debug 版本的 w3x_tool"
+    },
+    {
+      "label": "Debug 重新编译",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build/debug",
+        "--config",
+        "Debug",
+        "--target",
+        "w3x_tool",
+        "--clean-first",
+        "--parallel"
+      ],
+      "dependsOn": [
+        "配置 Debug"
+      ],
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "detail": "清理后重新编译 Debug 版本的 w3x_tool"
+    },
+    {
+      "label": "配置 Release",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build/release",
+        "-G",
+        "Visual Studio 17 2022",
+        "-A",
+        "x64",
+        "-DW3X_BUILD_TESTS=OFF"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Release 编译",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build/release",
+        "--config",
+        "Release",
+        "--target",
+        "w3x_tool",
+        "--parallel"
+      ],
+      "dependsOn": [
+        "配置 Release"
+      ],
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "detail": "配置并编译 Release 版本的 w3x_tool"
+    },
+    {
+      "label": "Release 重新编译",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/build/release",
+        "--config",
+        "Release",
+        "--target",
+        "w3x_tool",
+        "--clean-first",
+        "--parallel"
+      ],
+      "dependsOn": [
+        "配置 Release"
+      ],
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "detail": "清理后重新编译 Release 版本的 w3x_tool"
+    }
+  ]
+}

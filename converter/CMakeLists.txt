@@ -1,10 +1,12 @@
 # ==============================================================================
-# w3x_converter - format converters (JASS-to-Lua, W3X-to-LNI, resource extraction)
+# w3x_converter - format converters (W3X-to-LNI, resource extraction)
 # ==============================================================================
 
 file(GLOB_RECURSE W3X_CONVERTER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
 )
+
+list(FILTER W3X_CONVERTER_SOURCES EXCLUDE REGEX ".*/jass2lua/.*\\.cc$")
 
 add_library(w3x_converter STATIC ${W3X_CONVERTER_SOURCES})
 

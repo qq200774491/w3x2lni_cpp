@@ -6,28 +6,27 @@ include(FetchContent)
 # Avoid re-downloading if the user has already populated a dependency.
 set(FETCHCONTENT_QUIET ON)
 
-# ------------------------------------------------------------------------------
-# spdlog - fast C++ logging library
-# ------------------------------------------------------------------------------
-FetchContent_Declare(
-    spdlog
-    GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG        v1.15.1
-    GIT_SHALLOW    TRUE
-)
+find_package(spdlog CONFIG QUIET)
+if(NOT spdlog_FOUND)
+    FetchContent_Declare(
+        spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG        v1.15.1
+        GIT_SHALLOW    TRUE
+    )
+endif()
 
-# ------------------------------------------------------------------------------
-# nlohmann/json - JSON for Modern C++
-# ------------------------------------------------------------------------------
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.11.3
-    GIT_SHALLOW    TRUE
-)
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.11.3
+        GIT_SHALLOW    TRUE
+    )
+endif()
 
-# Populate non-GUI dependencies.
 FetchContent_MakeAvailable(spdlog nlohmann_json)
 
 # ------------------------------------------------------------------------------

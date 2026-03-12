@@ -5,16 +5,21 @@ cmake_minimum_required(VERSION 3.20)
 
 project(w3x_toolkit
     VERSION 1.0.0
-    DESCRIPTION "Warcraft III Modding Toolchain"
+    DESCRIPTION "Pure C++ Warcraft III CLI toolchain"
     LANGUAGES CXX
 )
 
 # ==============================================================================
 # Global C++ standard
 # ==============================================================================
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(WIN32 AND CMAKE_SIZEOF_VOID_P AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR
+        "The Windows v1 build supports x64 only. Reconfigure with '-A x64'.")
+endif()
 
 # Place all binaries in predictable directories.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -24,7 +29,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # ==============================================================================
 # Build options
 # ==============================================================================
-option(W3X_BUILD_GUI   "Build the Dear ImGui graphical front-end"  ON)
+option(W3X_BUILD_GUI   "Build the Dear ImGui graphical front-end"  OFF)
 option(W3X_BUILD_TESTS "Build unit tests"                          ON)
 
 # ==============================================================================
@@ -116,4 +121,9 @@ install(DIRECTORY cli/      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/w3x_toolkit
 
 if(W3X_BUILD_GUI)
     install(DIRECTORY gui/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/w3x_toolkit/gui" FILES_MATCHING PATTERN "*.h")
+endif()
+
+if(W3X_BUILD_TESTS)
+    include(CTest)
+    add_subdirectory(tests)
 endif()
