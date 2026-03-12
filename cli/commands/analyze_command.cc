@@ -4,147 +4,190 @@
 
 #include "cli/commands/analyze_command.h"
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "cli/commands/map_input_utils.h"
+#include "converter/resource_extract/resource_extractor.h"
 #include "core/error/error.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
+#include "parser/w3i/w3i_parser.h"
 
-namespace w3x_toolkit::cli
-{
+namespace w3x_toolkit::cli {
 
-  // ---------------------------------------------------------------------------
-  // Command interface
-  // ---------------------------------------------------------------------------
+namespace {
 
-  std::string AnalyzeCommand::Name() const { return "analyze"; }
+struct ResourceSummaryRow {
+  converter::ResourceType type;
+  std::string_view label;
+  std::size_t count = 0;
+  std::uint64_t size = 0;
+};
 
-  std::string AnalyzeCommand::Description() const
-  {
-    return "Analyze a W3X map structure and print statistics";
+std::string FormatSize(std::uint64_t size) {
+  std::ostringstream out;
+  out << size << " B";
+  if (size >= 1024 * 1024) {
+    out << " (" << std::fixed << std::setprecision(2)
+        << static_cast<double>(size) / (1024.0 * 1024.0) << " MB)";
+  } else if (size >= 1024) {
+    out << " (" << std::fixed << std::setprecision(2)
+        << static_cast<double>(size) / 1024.0 << " KB)";
+  }
+  return out.str();
+}
+
+std::string ScriptTypeName(int32_t script_type) {
+  if (script_type == 0) {
+    return "JASS";
+  }
+  if (script_type == 1) {
+    return "Lua";
+  }
+  return "Unknown";
+}
+
+void PrintW3iSummary(const std::filesystem::path& map_dir) {
+  const auto w3i_path = map_dir / "war3map.w3i";
+  std::cout << "Map Info (war3map.w3i):" << std::endl;
+
+  if (!core::FilesystemUtils::Exists(w3i_path)) {
+    std::cout << "  Not found in map directory." << std::endl << std::endl;
+    return;
   }
 
-  std::string AnalyzeCommand::Usage() const
-  {
-    return "analyze <input.w3x>";
-  }
-
-  core::Result<void> AnalyzeCommand::Execute(
-      const std::vector<std::string> &args)
-  {
-    if (args.empty())
-    {
-      return std::unexpected(core::Error(
-          core::ErrorCode::kInvalidFormat,
-          "Missing required argument.\nUsage: " + Usage()));
-    }
-
-    const std::string &input_path = args[0];
-
-    // Warn about extra arguments but don't fail.
-    if (args.size() > 1)
-    {
-      core::Logger::Instance().Warn(
-          "Ignoring extra arguments after input path");
-    }
-
-    return RunAnalysis(input_path);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  core::Result<void> AnalyzeCommand::RunAnalysis(
-      const std::string &input_path)
-  {
-    auto &logger = core::Logger::Instance();
-
-    // Validate input file exists.
-    std::filesystem::path input(input_path);
-    if (!core::FilesystemUtils::Exists(input))
-    {
-      return std::unexpected(
-          core::Error::FileNotFound("Input file not found: " + input_path));
-    }
-    if (!core::FilesystemUtils::IsFile(input))
-    {
-      return std::unexpected(core::Error(
-          core::ErrorCode::kInvalidFormat,
-          "Input path is not a file: " + input_path));
-    }
-
-    // Get file size for the summary.
-    auto file_size_result = core::FilesystemUtils::GetFileSize(input);
-    std::uintmax_t file_size = 0;
-    if (file_size_result.has_value())
-    {
-      file_size = file_size_result.value();
-    }
-
-    logger.Info("Analyzing map: {}", input_path);
-
-    // ------------------------------------------------------------------
-    // TODO: Call into the parser modules (w3x, w3i, etc.) once implemented.
-    //
-    // A full analysis would:
-    //   1. Open the W3X archive (MPQ)
-    //   2. Parse war3map.w3i for map metadata
-    //   3. Enumerate all files and categorize them
-    //   4. Compute statistics
-    //
-    // For now we output what we can determine from the filesystem alone
-    // and show a placeholder for archive contents.
-    // ------------------------------------------------------------------
-
-    // Print header.
-    std::cout << std::string(60, '=') << std::endl;
-    std::cout << "  W3X Map Analysis" << std::endl;
-    std::cout << std::string(60, '=') << std::endl;
-    std::cout << std::endl;
-
-    // File info.
-    std::cout << "File Information:" << std::endl;
-    std::cout << "  Path:      " << input_path << std::endl;
-    std::cout << "  Filename:  "
-              << core::FilesystemUtils::GetFilename(input) << std::endl;
-    std::cout << "  Size:      " << file_size << " bytes";
-    if (file_size >= 1024 * 1024)
-    {
-      std::cout << " (" << std::fixed << std::setprecision(2)
-                << static_cast<double>(file_size) / (1024.0 * 1024.0) << " MB)";
-    }
-    else if (file_size >= 1024)
-    {
-      std::cout << " (" << std::fixed << std::setprecision(2)
-                << static_cast<double>(file_size) / 1024.0 << " KB)";
-    }
-    std::cout << std::endl;
-    std::cout << std::endl;
-
-    // Map info placeholder.
-    std::cout << "Map Info (war3map.w3i):" << std::endl;
-    std::cout << "  (Requires W3I parser -- not yet implemented)" << std::endl;
-    std::cout << std::endl;
-
-    // File listing placeholder.
-    std::cout << "Archive Contents:" << std::endl;
-    std::cout << "  (Requires MPQ reader -- not yet implemented)" << std::endl;
-    std::cout << std::endl;
-
-    // Statistics placeholder.
-    std::cout << "Statistics:" << std::endl;
-    std::cout << "  (Requires archive enumeration -- not yet implemented)"
+  auto data = core::FilesystemUtils::ReadBinaryFile(w3i_path);
+  if (!data.has_value()) {
+    std::cout << "  Failed to read file: " << data.error() << std::endl
               << std::endl;
-    std::cout << std::endl;
-    std::cout << std::string(60, '=') << std::endl;
-
-    logger.Info("Analysis complete.");
-    return {};
+    return;
   }
 
-} // namespace w3x_toolkit::cli
+  auto parsed = parser::w3i::ParseW3i(data.value());
+  if (!parsed.has_value()) {
+    std::cout << "  Failed to parse W3I metadata: "
+              << parsed.error().message() << std::endl
+              << std::endl;
+    return;
+  }
+
+  const auto& w3i = parsed.value();
+  std::cout << "  Name:            " << w3i.map_name << std::endl;
+  std::cout << "  Author:          " << w3i.author << std::endl;
+  std::cout << "  Description:     " << w3i.description << std::endl;
+  std::cout << "  Recommended:     " << w3i.players_recommended << std::endl;
+  std::cout << "  Dimensions:      " << w3i.map_width << " x "
+            << w3i.map_height << std::endl;
+  std::cout << "  Players:         " << w3i.players.size() << std::endl;
+  std::cout << "  Forces:          " << w3i.forces.size() << std::endl;
+  std::cout << "  Script type:     " << ScriptTypeName(w3i.script_type)
+            << std::endl
+            << std::endl;
+}
+
+}  // namespace
+
+std::string AnalyzeCommand::Name() const { return "analyze"; }
+
+std::string AnalyzeCommand::Description() const {
+  return "Analyze an unpacked map directory and print resource statistics";
+}
+
+std::string AnalyzeCommand::Usage() const {
+  return "analyze <input_map_dir>";
+}
+
+core::Result<void> AnalyzeCommand::Execute(
+    const std::vector<std::string>& args) {
+  if (args.empty()) {
+    return std::unexpected(core::Error(
+        core::ErrorCode::kInvalidFormat,
+        "Missing required argument.\nUsage: " + Usage()));
+  }
+
+  if (args.size() > 1) {
+    core::Logger::Instance().Warn("Ignoring extra arguments after input path");
+  }
+
+  return RunAnalysis(args[0]);
+}
+
+core::Result<void> AnalyzeCommand::RunAnalysis(const std::string& input_path) {
+  auto& logger = core::Logger::Instance();
+
+  W3X_ASSIGN_OR_RETURN(auto input_dir, ResolveMapInputDirectory(input_path));
+  logger.Info("Analyzing unpacked map directory: {}", input_dir.string());
+
+  converter::ResourceExtractor extractor(input_dir);
+  W3X_ASSIGN_OR_RETURN(auto resources, extractor.ListResources());
+
+  std::array<ResourceSummaryRow, 7> summaries{{
+      {converter::ResourceType::kModel, "Models"},
+      {converter::ResourceType::kTexture, "Textures"},
+      {converter::ResourceType::kSound, "Sounds"},
+      {converter::ResourceType::kScript, "Scripts"},
+      {converter::ResourceType::kUi, "UI"},
+      {converter::ResourceType::kData, "Data"},
+      {converter::ResourceType::kMap, "Map"},
+  }};
+
+  std::uint64_t total_size = 0;
+  std::size_t unknown_count = 0;
+  std::uint64_t unknown_size = 0;
+  for (const auto& resource : resources) {
+    total_size += resource.size;
+    bool matched = false;
+    for (auto& summary : summaries) {
+      if (summary.type == resource.type) {
+        ++summary.count;
+        summary.size += resource.size;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      ++unknown_count;
+      unknown_size += resource.size;
+    }
+  }
+
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << "  W3X Directory Analysis" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << std::endl;
+
+  std::cout << "Directory Information:" << std::endl;
+  std::cout << "  Path:            " << input_dir.string() << std::endl;
+  std::cout << "  Total files:     " << resources.size() << std::endl;
+  std::cout << "  Total size:      " << FormatSize(total_size) << std::endl;
+  std::cout << std::endl;
+
+  PrintW3iSummary(input_dir);
+
+  std::cout << "Resource Breakdown:" << std::endl;
+  for (const auto& summary : summaries) {
+    std::cout << "  " << std::left << std::setw(14) << summary.label
+              << std::right << std::setw(6) << summary.count << " file(s), "
+              << FormatSize(summary.size) << std::endl;
+  }
+  if (unknown_count > 0) {
+    std::cout << "  " << std::left << std::setw(14) << "Unknown"
+              << std::right << std::setw(6) << unknown_count << " file(s), "
+              << FormatSize(unknown_size) << std::endl;
+  }
+  std::cout << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+
+  logger.Info("Analysis complete.");
+  return {};
+}
+
+}  // namespace w3x_toolkit::cli

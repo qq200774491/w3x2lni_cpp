@@ -10,25 +10,22 @@
 #include <string>
 #include <vector>
 
+#include "cli/commands/map_input_utils.h"
 #include "core/error/error.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
 
 namespace w3x_toolkit::cli {
 
-// ---------------------------------------------------------------------------
-// Command interface
-// ---------------------------------------------------------------------------
-
 std::string ExtractCommand::Name() const { return "extract"; }
 
 std::string ExtractCommand::Description() const {
-  return "Extract resources from a W3X map archive";
+  return "Extract resources from an unpacked map directory";
 }
 
 std::string ExtractCommand::Usage() const {
-  return "extract <input.w3x> <output_dir> "
-         "[--type=all|models|textures|sounds|scripts]";
+  return "extract <input_map_dir> <output_dir> "
+         "[--type=all|models|textures|sounds|scripts|ui|data|map]";
 }
 
 core::Result<void> ExtractCommand::Execute(
@@ -45,120 +42,87 @@ core::Result<void> ExtractCommand::Execute(
         "Missing output directory.\nUsage: " + Usage()));
   }
 
-  const std::string& input_path = args[0];
-  const std::string& output_path = args[1];
-  ResourceType resource_type = ResourceType::kAll;  // default
-
-  // Parse optional flags.
+  std::optional<converter::ResourceType> resource_type;
   for (std::size_t i = 2; i < args.size(); ++i) {
     const std::string& arg = args[i];
-
     if (arg.starts_with("--type=")) {
-      std::string value = arg.substr(7);
-      auto result = ParseResourceType(value);
+      auto result = ParseResourceType(arg.substr(7));
       if (!result.has_value()) {
         return std::unexpected(result.error());
       }
       resource_type = result.value();
-    } else {
-      return std::unexpected(core::Error(
-          core::ErrorCode::kInvalidFormat,
-          "Unknown option: " + arg + "\nUsage: " + Usage()));
+      continue;
     }
+
+    return std::unexpected(core::Error(
+        core::ErrorCode::kInvalidFormat,
+        "Unknown option: " + arg + "\nUsage: " + Usage()));
   }
 
-  return RunExtraction(input_path, output_path, resource_type);
+  W3X_ASSIGN_OR_RETURN(auto input_dir, ResolveMapInputDirectory(args[0]));
+  return RunExtraction(input_dir, std::filesystem::path(args[1]),
+                       resource_type);
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-core::Result<ResourceType> ExtractCommand::ParseResourceType(
-    const std::string& value) {
+core::Result<std::optional<converter::ResourceType>>
+ExtractCommand::ParseResourceType(const std::string& value) {
   std::string lower = value;
   std::transform(lower.begin(), lower.end(), lower.begin(),
                  [](unsigned char c) { return std::tolower(c); });
 
-  if (lower == "all") return ResourceType::kAll;
-  if (lower == "models") return ResourceType::kModels;
-  if (lower == "textures") return ResourceType::kTextures;
-  if (lower == "sounds") return ResourceType::kSounds;
-  if (lower == "scripts") return ResourceType::kScripts;
+  if (lower == "all") return std::nullopt;
+  if (lower == "models") return converter::ResourceType::kModel;
+  if (lower == "textures") return converter::ResourceType::kTexture;
+  if (lower == "sounds") return converter::ResourceType::kSound;
+  if (lower == "scripts") return converter::ResourceType::kScript;
+  if (lower == "ui") return converter::ResourceType::kUi;
+  if (lower == "data") return converter::ResourceType::kData;
+  if (lower == "map") return converter::ResourceType::kMap;
 
   return std::unexpected(core::Error(
       core::ErrorCode::kInvalidFormat,
       "Unknown resource type '" + value +
-          "'. Supported types: all, models, textures, sounds, scripts"));
+          "'. Supported types: all, models, textures, sounds, scripts, ui, "
+          "data, map"));
 }
 
 core::Result<void> ExtractCommand::RunExtraction(
-    const std::string& input_path, const std::string& output_path,
-    ResourceType type) {
+    const std::filesystem::path& input_path,
+    const std::filesystem::path& output_path,
+    const std::optional<converter::ResourceType>& type) {
   auto& logger = core::Logger::Instance();
 
-  // Validate input file exists.
-  std::filesystem::path input(input_path);
-  if (!core::FilesystemUtils::Exists(input)) {
-    return std::unexpected(
-        core::Error::FileNotFound("Input file not found: " + input_path));
-  }
-  if (!core::FilesystemUtils::IsFile(input)) {
-    return std::unexpected(core::Error(
-        core::ErrorCode::kInvalidFormat,
-        "Input path is not a file: " + input_path));
-  }
-
-  // Ensure output directory exists.
-  std::filesystem::path output(output_path);
-  auto create_result = core::FilesystemUtils::CreateDirectories(output);
+  auto create_result = core::FilesystemUtils::CreateDirectories(output_path);
   if (!create_result.has_value()) {
     return std::unexpected(core::Error::IOError(
         "Failed to create output directory: " + create_result.error()));
   }
 
-  const char* type_name = "all";
-  switch (type) {
-    case ResourceType::kAll:
-      type_name = "all";
-      break;
-    case ResourceType::kModels:
-      type_name = "models";
-      break;
-    case ResourceType::kTextures:
-      type_name = "textures";
-      break;
-    case ResourceType::kSounds:
-      type_name = "sounds";
-      break;
-    case ResourceType::kScripts:
-      type_name = "scripts";
-      break;
+  const std::string type_name =
+      type.has_value() ? std::string(converter::ResourceTypeToString(*type))
+                       : std::string("All");
+  logger.Info("Extracting '{}' -> '{}' (type: {})", input_path.string(),
+              output_path.string(), type_name);
+
+  converter::ResourceExtractor extractor(input_path);
+  extractor.SetOutputPath(output_path);
+  extractor.SetProgressCallback(
+      [](std::size_t current, std::size_t total, std::string_view file) {
+        std::cout << "[" << current << "/" << total << "] " << file
+                  << std::endl;
+        return true;
+      });
+
+  core::Result<std::size_t> extracted = type.has_value()
+      ? extractor.ExtractByType(*type)
+      : extractor.ExtractAll();
+  if (!extracted.has_value()) {
+    return std::unexpected(extracted.error());
   }
 
-  logger.Info("Extracting '{}' -> '{}' (type: {})", input_path, output_path,
-              type_name);
-
-  // ------------------------------------------------------------------
-  // TODO: Call into the resource_extract module once it is implemented.
-  //
-  // The extraction pipeline will:
-  //   1. Open the W3X archive (MPQ)
-  //   2. Enumerate files matching the resource type filter
-  //   3. Extract each file to the output directory
-  //   4. Report progress to stdout
-  //
-  // For now we print a placeholder message.
-  // ------------------------------------------------------------------
-  std::cout << "[1/3] Opening map archive..." << std::endl;
-  std::cout << "[2/3] Enumerating resources (filter: " << type_name << ")..."
-            << std::endl;
-  std::cout << "[3/3] Extracting files..." << std::endl;
-
   logger.Info("Extraction complete.");
-  std::cout << "Extraction complete. Output written to: " << output_path
-            << std::endl;
-
+  std::cout << "Extracted " << extracted.value() << " file(s) to: "
+            << output_path.string() << std::endl;
   return {};
 }
 

@@ -5,27 +5,21 @@
 #ifndef W3X_TOOLKIT_CLI_COMMANDS_CONVERT_COMMAND_H_
 #define W3X_TOOLKIT_CLI_COMMANDS_CONVERT_COMMAND_H_
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "cli/commands/command.h"
+#include "converter/w3x2lni/w3x_to_lni.h"
 #include "core/error/error.h"
 
 namespace w3x_toolkit::cli {
 
-// Supported output formats for the convert command.
-enum class ConvertFormat {
-  kLni,  // LNI (Lua Native Interface) format
-  kSlk,  // SLK (Spreadsheet) format
-  kObj,  // OBJ (Object data) format
-};
-
-// Converts a Warcraft III .w3x map file to LNI, SLK, or OBJ format.
+// Converts an unpacked Warcraft III map directory to the LNI workspace layout.
 //
 // Usage:
-//   w3x_toolkit convert <input.w3x> <output_dir> [--format=lni|slk|obj]
-//
-// If --format is omitted the default is LNI.
+//   w3x_toolkit convert <input_map_dir> <output_dir>
+//       [--no-map-files] [--no-table-data] [--no-triggers] [--no-config]
 class ConvertCommand final : public Command {
  public:
   ConvertCommand() = default;
@@ -33,17 +27,17 @@ class ConvertCommand final : public Command {
 
   std::string Name() const override;
   std::string Description() const override;
-  std::string Usage() const override;
+ std::string Usage() const override;
   core::Result<void> Execute(const std::vector<std::string>& args) override;
 
  private:
-  // Parses a format string ("lni", "slk", "obj") into a ConvertFormat value.
-  static core::Result<ConvertFormat> ParseFormat(const std::string& value);
+  core::Result<converter::W3xToLniOptions> ParseOptions(
+      const std::vector<std::string>& args, std::size_t first_option_index);
 
-  // Runs the conversion pipeline.
-  core::Result<void> RunConversion(const std::string& input_path,
-                                   const std::string& output_path,
-                                   ConvertFormat format);
+  core::Result<void> RunConversion(
+      const std::filesystem::path& input_path,
+      const std::filesystem::path& output_path,
+      const converter::W3xToLniOptions& options);
 };
 
 }  // namespace w3x_toolkit::cli

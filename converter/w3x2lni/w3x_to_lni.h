@@ -11,12 +11,10 @@
 
 #include "core/error/error.h"
 
-namespace w3x_toolkit::converter
-{
+namespace w3x_toolkit::converter {
 
-  // Specifies which components of a W3X map to extract into LNI format.
-  struct W3xToLniOptions
-  {
+  // Specifies which components of a W3X map to extract into the LNI workspace.
+  struct W3xToLniOptions {
     // Extract map files (terrain, pathing, etc.) into the map/ subdirectory.
     bool extract_map_files = true;
 
@@ -37,8 +35,7 @@ namespace w3x_toolkit::converter
   };
 
   // Progress information passed to the callback during conversion.
-  struct ConversionProgress
-  {
+  struct ConversionProgress {
     // Current phase name (e.g. "Loading archive", "Writing table data").
     std::string phase;
 
@@ -54,10 +51,10 @@ namespace w3x_toolkit::converter
 
   // Signature for the progress callback.
   // Return false from the callback to request cancellation.
-  using ProgressCallback = std::function<bool(const ConversionProgress &)>;
+  using ProgressCallback = std::function<bool(const ConversionProgress&)>;
 
-  // Converts a Warcraft III map archive (.w3x) to a LNI (Lua Native INI)
-  // directory structure suitable for version control and manual editing.
+  // Converts a Warcraft III map input to the LNI workspace directory
+  // structure suitable for version control and manual editing.
   //
   // The output directory is organized as:
   //   <output>/
@@ -67,37 +64,36 @@ namespace w3x_toolkit::converter
   //     w3x2lni.ini   -- converter configuration / metadata
   //
   // Usage:
-  //   W3xToLniConverter converter(input_w3x, output_dir);
+  //   W3xToLniConverter converter(input_map_dir, output_dir);
   //   converter.SetOptions(options);
   //   converter.SetProgressCallback(callback);
   //   auto result = converter.Convert();
   //
-  class W3xToLniConverter
-  {
+  class W3xToLniConverter {
   public:
-    // Constructs a converter that will read from |input_path| (a .w3x file or
-    // an already-extracted directory) and write the LNI output to
-    // |output_path|.
+    // Constructs a converter that will read from |input_path| and write the
+    // LNI output to |output_path|. The current v1 implementation supports
+    // unpacked directory inputs; packed MPQ archives remain a future step.
     W3xToLniConverter(std::filesystem::path input_path,
                       std::filesystem::path output_path);
 
     ~W3xToLniConverter() = default;
 
     // Non-copyable, movable.
-    W3xToLniConverter(const W3xToLniConverter &) = delete;
-    W3xToLniConverter &operator=(const W3xToLniConverter &) = delete;
-    W3xToLniConverter(W3xToLniConverter &&) noexcept = default;
-    W3xToLniConverter &operator=(W3xToLniConverter &&) noexcept = default;
+    W3xToLniConverter(const W3xToLniConverter&) = delete;
+    W3xToLniConverter& operator=(const W3xToLniConverter&) = delete;
+    W3xToLniConverter(W3xToLniConverter&&) noexcept = default;
+    W3xToLniConverter& operator=(W3xToLniConverter&&) noexcept = default;
 
     // ---------------------------------------------------------------------------
     // Configuration
     // ---------------------------------------------------------------------------
 
     // Sets the conversion options.  Must be called before Convert().
-    void SetOptions(const W3xToLniOptions &options);
+    void SetOptions(const W3xToLniOptions& options);
 
     // Returns the current options.
-    const W3xToLniOptions &GetOptions() const;
+    const W3xToLniOptions& GetOptions() const;
 
     // Installs a progress callback.  The callback is invoked periodically
     // during Convert().  Returning false from the callback cancels the
@@ -132,6 +128,6 @@ namespace w3x_toolkit::converter
     bool cancelled_ = false;
   };
 
-} // namespace w3x_toolkit::converter
+}  // namespace w3x_toolkit::converter
 
-#endif // W3X_TOOLKIT_CONVERTER_W3X_TO_LNI_H_
+#endif  // W3X_TOOLKIT_CONVERTER_W3X_TO_LNI_H_

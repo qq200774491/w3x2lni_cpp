@@ -27,7 +27,13 @@ if(NOT nlohmann_json_FOUND)
     )
 endif()
 
-FetchContent_MakeAvailable(spdlog nlohmann_json)
+if(NOT spdlog_FOUND)
+    FetchContent_MakeAvailable(spdlog)
+endif()
+
+if(NOT nlohmann_json_FOUND)
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
 
 # ------------------------------------------------------------------------------
 # GUI-only dependencies
