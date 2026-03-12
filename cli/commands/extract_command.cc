@@ -68,7 +68,9 @@ core::Result<std::optional<converter::ResourceType>>
 ExtractCommand::ParseResourceType(const std::string& value) {
   std::string lower = value;
   std::transform(lower.begin(), lower.end(), lower.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
 
   if (lower == "all") return std::nullopt;
   if (lower == "models") return converter::ResourceType::kModel;

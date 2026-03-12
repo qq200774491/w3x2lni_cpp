@@ -45,7 +45,7 @@ namespace w3x_toolkit::converter
     std::string ext(extension);
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c)
-                   { return std::tolower(c); });
+                   { return static_cast<char>(std::tolower(c)); });
 
     // Models.
     if (ext == ".mdx" || ext == ".mdl")

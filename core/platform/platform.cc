@@ -18,16 +18,32 @@
 
 namespace w3x_toolkit::core {
 
+#ifdef W3X_PLATFORM_WINDOWS
+namespace {
+
+std::wstring GetEnvironmentWide(const wchar_t* name) {
+  wchar_t* buffer = nullptr;
+  std::size_t size = 0;
+  if (_wdupenv_s(&buffer, &size, name) != 0 || buffer == nullptr) {
+    return {};
+  }
+
+  std::wstring value(buffer);
+  std::free(buffer);
+  return value;
+}
+
+}  // namespace
+#endif
+
 // ---------------------------------------------------------------------------
 // GetHomeDirectory
 // ---------------------------------------------------------------------------
 
 std::filesystem::path Platform::GetHomeDirectory() {
 #ifdef W3X_PLATFORM_WINDOWS
-  // Prefer the USERPROFILE environment variable.
-  // _wgetenv_s is the safe, wide-char variant on MSVC.
-  const wchar_t* profile = _wgetenv(L"USERPROFILE");
-  if (profile != nullptr && profile[0] != L'\0') {
+  const std::wstring profile = GetEnvironmentWide(L"USERPROFILE");
+  if (!profile.empty()) {
     return std::filesystem::path(profile);
   }
 
@@ -44,10 +60,10 @@ std::filesystem::path Platform::GetHomeDirectory() {
   }
 
   // Last resort: combine HOMEDRIVE + HOMEPATH.
-  const wchar_t* drive = _wgetenv(L"HOMEDRIVE");
-  const wchar_t* home_path = _wgetenv(L"HOMEPATH");
-  if (drive != nullptr && home_path != nullptr) {
-    return std::filesystem::path(std::wstring(drive) + home_path);
+  const std::wstring drive = GetEnvironmentWide(L"HOMEDRIVE");
+  const std::wstring home_path = GetEnvironmentWide(L"HOMEPATH");
+  if (!drive.empty() && !home_path.empty()) {
+    return std::filesystem::path(drive + home_path);
   }
 
   // Nothing found; return an empty path.

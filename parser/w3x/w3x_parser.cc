@@ -128,14 +128,14 @@ core::Result<std::vector<std::string>> MpqArchive::ListFiles() const {
   return std::vector<std::string>{};
 }
 
-bool MpqArchive::FileExists(const std::string& filename) const {
+bool MpqArchive::FileExists(const std::string& /*filename*/) const {
   if (!is_open_) return false;
   // TODO: SFileHasFile(mpq_handle_, filename.c_str());
   return false;
 }
 
 core::Result<std::vector<uint8_t>> MpqArchive::ExtractFile(
-    const std::string& filename) const {
+    const std::string& /*filename*/) const {
   if (!is_open_) {
     return std::unexpected(core::Error::IOError("MPQ archive is not open"));
   }
