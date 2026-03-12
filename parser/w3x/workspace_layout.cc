@@ -17,6 +17,7 @@
 #include "core/config/runtime_paths.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "parser/w3i/w3i_parser.h"
+#include "parser/w3x/object_pack_generator.h"
 #include "parser/w3x/map_archive_io.h"
 
 namespace w3x_toolkit::parser::w3x {
@@ -372,6 +373,24 @@ core::Result<void> CopyOneFile(const fs::path& source, const fs::path& target) {
       });
 }
 
+core::Result<void> WriteDerivedTableFiles(const fs::path& flat_dir,
+                                          const fs::path& workspace_dir) {
+  W3X_ASSIGN_OR_RETURN(auto generated_files, GenerateDerivedTableFiles(flat_dir));
+  for (const GeneratedMapFile& generated : generated_files) {
+    const fs::path target = workspace_dir / "table" / generated.relative_path;
+    if (core::FilesystemUtils::Exists(target)) {
+      continue;
+    }
+    W3X_RETURN_IF_ERROR(
+        core::FilesystemUtils::WriteBinaryFile(target, generated.content)
+            .transform_error([&target](const std::string& error) {
+              return core::Error::IOError("Failed to write derived table file '" +
+                                          target.string() + "': " + error);
+            }));
+  }
+  return {};
+}
+
 std::vector<std::uint8_t> BuildWorkspaceMarker() {
   std::vector<std::uint8_t> bytes(12, 0);
   bytes[0] = static_cast<std::uint8_t>('H');
@@ -487,6 +506,7 @@ std::string ToFlatPath(const std::string& workspace_relative_path) {
 core::Result<void> ConvertFlatDirectoryToWorkspace(
     const fs::path& flat_dir, const fs::path& workspace_dir) {
   W3X_RETURN_IF_ERROR(ConvertDirectory(flat_dir, workspace_dir, true));
+  W3X_RETURN_IF_ERROR(WriteDerivedTableFiles(flat_dir, workspace_dir));
   return FinalizeWorkspaceDirectory(flat_dir, workspace_dir);
 }
 

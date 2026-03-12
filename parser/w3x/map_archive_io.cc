@@ -124,6 +124,14 @@ bool IsAnonymousEntryName(const std::string& path) {
   return filename[12] == '.';
 }
 
+bool IsSourceOnlyGeneratedTableFile(std::string_view path) {
+  static const std::unordered_set<std::string> kGeneratedTableFiles = {
+      "ability.ini",      "destructable.ini", "doodad.ini", "buff.ini",
+      "upgrade.ini",      "item.ini",         "unit.ini",   "misc.ini",
+  };
+  return kGeneratedTableFiles.contains(NormalizeArchivePath(std::string(path)));
+}
+
 std::uint64_t HashBytes(const std::vector<std::uint8_t>& data) {
   constexpr std::uint64_t kOffset = 1469598103934665603ull;
   constexpr std::uint64_t kPrime = 1099511628211ull;
@@ -550,6 +558,9 @@ core::Result<std::size_t> PackFlatMapDirectory(const fs::path& input_dir,
     const auto relative = NormalizeArchivePath(
         fs::relative(file, resolved_input_dir).generic_string());
     if (relative == manifest_name) {
+      continue;
+    }
+    if (IsSourceOnlyGeneratedTableFile(relative)) {
       continue;
     }
     if (synthetic_relative_paths.contains(relative)) {

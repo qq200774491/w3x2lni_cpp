@@ -28,6 +28,9 @@
   - 从内置 `data/<version>/prebuilt` 导出 `Melee/Custom` 模板
 - `log [--path]`
   - 打印当前日志文件或仅显示日志路径
+- `obj <input_map_dir|input_map.w3x|input_map.w3m> [output_map.w3x|output_map.w3m]`
+  - 将目录或 packed map 转为当前纯 C++ 可生成的 Obj 风格打包地图
+  - 默认输出 `<stem>_obj.w3x`
 - `test`
   - 发现并执行同目录或构建目录中的 `w3x_smoke_tests`
 - `unpack <input_map.w3x|input_map.w3m> <output_dir>`
@@ -40,6 +43,7 @@
   - 读取 `.w3x_manifest.json` 恢复匿名条目原始归档名
   - 支持修改后 `SLK`/`INI` 再回包
   - 目前可合成 `war3map.w3a/w3b/w3d/w3h/w3u/w3t/w3q` 与 `war3mapmisc.txt`
+  - 对 `ability/destructable/doodad/buff/upgrade/item/unit/misc.ini` 这类对象源文件，回包时不再原样塞进归档
 - `convert <input_map_dir|input_map.w3x|input_map.w3m> <output_dir>`
   - 将目录或 packed map 转换为 LNI 工作区布局
   - 输出 `.w3x`、`map/`、`resource/`、`sound/`、`table/`、`trigger/`、`w3x2lni/` 与兼容性的 `w3x2lni.ini`
@@ -81,6 +85,7 @@ external/     原 Lua 项目参考资料，不参与新构建
 - `w3b/w3d` 对象文件生成与回环 smoke test 已通过
 - `config/template/log` smoke test 已通过
 - `war3map.w3a -> ability.ini -> pack -> unpack` 与未知字段 `raw(...)` 回环 smoke test 已通过
+- `obj` 命令与 `pack/unpack` 的对象源过滤 smoke test 已通过
 - 对仓库内实图 `雷之呼吸—壹式——霹雳一闪 -.w3x` 已验证：
   - 核心地图文件恢复
   - `ability.ini/unit.ini/upgrade.ini/buff.ini/item.ini/txt.ini/misc.ini` 恢复

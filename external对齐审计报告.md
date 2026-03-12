@@ -182,6 +182,53 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 - 这是命令面对齐的补强项，不改变核心转换语义。
 
+### 2026-03-12 第 11 个已落地点
+
+本轮继续完成：
+
+- CLI 新增 `obj` 命令，不再只有 `pack` 这一层通用归档入口
+- `obj` 命令可接受目录或 packed map 输入，并输出 Obj 风格的 `.w3x`
+- `unpack` 现在会在工作区侧自动从：
+  - `war3map.w3a/w3b/w3d/w3h/w3q/w3t/w3u`
+  - `war3mapmisc.txt`
+  派生出对应 `table/*.ini`
+- `pack` 现在会过滤 source-only 的对象表文件：
+  - `ability.ini`
+  - `destructable.ini`
+  - `doodad.ini`
+  - `buff.ini`
+  - `upgrade.ini`
+  - `item.ini`
+  - `unit.ini`
+  - `misc.ini`
+  不再把这些源文件原样塞进归档，同时依赖合成出的 `war3map.w3*` / `war3mapmisc.txt`
+- smoke test 已覆盖：
+  - `obj` 命令成功产出 `.w3x`
+  - raw archive 中不再残留 `ability.ini/misc.ini`
+  - `unpack` 仍可从 Obj 输出重新派生 `table/ability.ini`
+
+新增/更新代码：
+
+- `cli/commands/obj_command.h`
+- `cli/commands/obj_command.cc`
+- `cli/cli_app.cc`
+- `parser/w3x/workspace_layout.cc`
+- `parser/w3x/map_archive_io.cc`
+- `tests/smoke_tests.cc`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe help obj
+```
+
+说明：
+
+- 这一轮完成的是“Obj 子链第一阶段对齐”。
+- `slk` 命令与真正的 Slk 目标格式语义仍然缺失。
+
 ## 1. 审计目标
 
 本次审计的目标不是判断“当前项目是否可用”，而是判断：
@@ -302,6 +349,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `config`
 - `convert`
 - `lni`
+- `obj`
 - `extract`
 - `analyze`
 - `unpack`
@@ -384,6 +432,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 当前 C++ 项目没有这套格式模型。
 - 当前只有：
   - 目录到“LNI workspace layout”的 `convert`
+  - 第一阶段的 `obj` 打包命令
   - archive 到 workspace 的 `unpack`
   - workspace/目录到 archive 的 `pack`
 
@@ -425,7 +474,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这一项已不再是“纯壳层命令”。
 - 但它仍然不是 `external` 那种完整的前端/后端语义转换管线。
 
-### 5.3 对象数据打包/回包已推进到第二阶段，但仍远未对齐参考项目
+### 5.3 对象数据打包/回包已推进到第三阶段，但仍远未对齐参考项目
 
 当前项目证据：
 
@@ -456,14 +505,16 @@ ctest --test-dir build2 -C Release --output-on-failure
   - `war3map.w3u -> unit.ini`
   - `war3mapmisc.txt -> misc.ini`
 - 对 metadata 无法识别的字段，已新增 `raw(...)` 保底语法，确保 `convert -> pack` 时不直接丢字段
+- `pack` 现在会过滤 source-only 的对象源 `*.ini`，更接近 Obj 产物，而不是把源文件和生成物一起塞回归档
+- `unpack` 现在会从 `war3map.w3*` / `war3mapmisc.txt` 自动派生出工作区 `table/*.ini`
 - 仍然没有看到对应：
   - `txt.ini` 的完整回写链
   - `doo/w3s/w3r` 等参考项目 TODO/能力边界中的其它地图语义文件
 
 进一步问题：
 
-- 当前 `PackMapDirectory()` 会把工作区中的常规文本文件直接作为归档成员写回，同时再额外合成部分 `war3map.w3*` 文件。
-- 这意味着它更像“为了当前工作区回环而生成可运行包”，而不是严格产出 `external` 意义下的标准 `Obj` 或 `Slk` 目标格式。
+- 当前 `PackMapDirectory()` 虽然已经开始过滤 source-only 的对象 `*.ini`，但仍会把其它常规文本文件直接作为归档成员写回，同时再额外合成部分 `war3map.w3*` 文件。
+- 这意味着它比之前更接近 Obj 产物，但仍然不是严格产出 `external` 意义下的标准 `Obj` 或 `Slk` 目标格式。
 
 上面这一点属于从源码做出的合理推断，依据是：
 
@@ -504,7 +555,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这是**结构性缺口**。
 - 只要这块没补，当前项目就不能说“严格对齐 external 的触发器能力”。
 
-### 5.5 命令面：已推进到第二阶段部分对齐，但距离参考项目完整 CLI 仍有差距
+### 5.5 命令面：已推进到第三阶段部分对齐，但距离参考项目完整 CLI 仍有差距
 
 参考项目证据：
 
@@ -537,6 +588,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `version`
 - `lni`
 - `config`
+- `obj`
 - `template`
 - `log`
 - `test`
@@ -544,13 +596,12 @@ ctest --test-dir build2 -C Release --output-on-failure
 剩余差异：
 
 - 当前没有：
-  - `obj`
   - `slk`
   - `mpq` 型工具命令
 
 审计结论：
 
-- 这一项已从“第一阶段壳层对齐”推进到“第二阶段可用命令面对齐”。
+- 这一项已从“第二阶段可用命令面对齐”推进到“第三阶段部分模式对齐”。
 - 但离 `external` 的完整命令面仍然有明显差距。
 
 ### 5.6 配置系统：已完成第一阶段纯 C++ 分层 INI 骨架，但距离参考项目完整语义仍有差距
@@ -678,12 +729,13 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这一项已从“只能在源码树里跑”推进到“开始具备独立打包能力”。
 - 仍未达到完全独立发布，因为代码还保留 `external/` 回退路径，且 bundled 数据版本仍然偏少。
 
-### 5.9 工作区分类：已完成第一阶段收敛，但还没有完全统一
+### 5.9 工作区分类：已推进到第三阶段收敛，但还没有完全统一
 
 当前项目证据：
 
 - `converter/w3x2lni/w3x_to_lni.cc`
 - `parser/w3x/workspace_layout.cc`
+- `parser/w3x/map_archive_io.cc`
 - `tests/smoke_tests.cc`
 
 本轮已完成的收敛：
@@ -703,19 +755,21 @@ ctest --test-dir build2 -C Release --output-on-failure
   - `w3x2lni/locale/lml.lng`
   - `w3x2lni/config.ini`
 - `ExtractMapFiles()` 已不再把模型/贴图/声音混放到 `map/`
+- `unpack` 现在会自动为工作区补齐对象派生表文件，而不要求这些 `*.ini` 真正存在于归档中
+- `pack` 现在不会把 source-only 对象表文件直接回塞到归档
 
 仍然存在的不一致：
 
 1. `convert` 仍然把 `.j/.lua/.ai` 直接复制到 `trigger/`。  
    但参考项目里 raw script 与 trigger 语义文件并不是同一层概念。
 
-2. `convert` 生成的 `table/*.ini` 已经开始承载对象语义，但仍然不是 `external` 等价的完整语义产物。
+2. `convert/unpack` 生成的 `table/*.ini` 已经开始承载对象语义，但仍然不是 `external` 等价的完整语义产物。
 
 3. `convert` 与 `unpack` 虽然目录形态更接近了，但高层语义仍未完全统一。
 
 审计结论：
 
-- 这一项已从“第一阶段部分对齐”推进到“第二阶段部分对齐”。
+- 这一项已从“第二阶段部分对齐”推进到“第三阶段部分对齐”。
 - 但距离 `external` 的稳定布局规则和语义规则仍然有距离。
 
 ### 5.10 输入模型：已完成第一阶段部分对齐，但还没有达到 `external` 的统一转换层

@@ -17,10 +17,12 @@
 #include "cli/commands/convert_command.h"
 #include "cli/commands/extract_command.h"
 #include "cli/commands/log_command.h"
+#include "cli/commands/obj_command.h"
 #include "cli/commands/pack_command.h"
 #include "cli/commands/template_command.h"
 #include "cli/commands/unpack_command.h"
 #include "core/filesystem/filesystem_utils.h"
+#include "parser/w3x/map_archive_io.h"
 #include "parser/w3u/w3u_parser.h"
 #include "parser/w3u/w3u_writer.h"
 
@@ -613,6 +615,47 @@ void TestConvertObjectBinaryToIniRoundTrip() {
          "Unknown raw fields should survive convert -> pack via raw syntax");
 }
 
+void TestObjCommandAndArchiveFiltering() {
+  TemporaryDirectory temp;
+  const fs::path workspace = temp.path() / "obj_workspace";
+  const fs::path obj_map = temp.path() / "obj_output.w3x";
+  const fs::path raw_unpacked = temp.path() / "obj_raw";
+  const fs::path workspace_unpacked = temp.path() / "obj_workspace_out";
+
+  fs::create_directories(workspace / "table");
+  WriteBinary(workspace / ".w3x", std::vector<std::uint8_t>{'H', 'M', '3', 'W'});
+  WriteBinary(workspace / "map" / "war3map.w3i", BuildMinimalW3i());
+  WriteText(workspace / "table" / "ability.ini",
+            "[A000]\n_parent=ANcl\nname=ObjAbility\n");
+  WriteText(workspace / "table" / "misc.ini", "[HERO]\nname=Obj Hero\n");
+
+  w3x_toolkit::cli::ObjCommand obj;
+  auto obj_result = obj.Execute({workspace.string(), obj_map.string()});
+  Expect(obj_result.has_value(), "Obj command should pack a workspace to .w3x");
+  ExpectFileExists(obj_map);
+
+  auto raw_unpack_result =
+      w3x_toolkit::parser::w3x::UnpackMapArchive(obj_map, raw_unpacked);
+  Expect(raw_unpack_result.has_value(),
+         "Obj output archive should unpack to a raw directory");
+  ExpectFileExists(raw_unpacked / "war3map.w3a");
+  ExpectFileExists(raw_unpacked / "war3mapmisc.txt");
+  Expect(!fs::exists(raw_unpacked / "ability.ini"),
+         "Obj output archive should not carry source-only ability.ini");
+  Expect(!fs::exists(raw_unpacked / "misc.ini"),
+         "Obj output archive should not carry source-only misc.ini");
+
+  w3x_toolkit::cli::UnpackCommand unpack;
+  auto workspace_unpack_result =
+      unpack.Execute({obj_map.string(), workspace_unpacked.string()});
+  Expect(workspace_unpack_result.has_value(),
+         "Obj output archive should unpack to workspace form");
+  ExpectFileExists(workspace_unpacked / "table" / "ability.ini");
+  Expect(ReadText(workspace_unpacked / "table" / "ability.ini")
+                 .find("name=ObjAbility") != std::string::npos,
+         "Unpack should derive ability.ini back from the Obj archive");
+}
+
 }  // namespace
 
 int main() {
@@ -623,6 +666,7 @@ int main() {
     TestPackUnpackRoundTrip();
     TestConfigTemplateAndLogCommands();
     TestConvertObjectBinaryToIniRoundTrip();
+    TestObjCommandAndArchiveFiltering();
     std::cout << "Smoke tests passed." << std::endl;
     return 0;
   } catch (const std::exception& ex) {
