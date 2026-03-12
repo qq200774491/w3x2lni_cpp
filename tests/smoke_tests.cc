@@ -270,16 +270,17 @@ void TestPackUnpackRoundTrip() {
   auto unpack_result =
       unpack.Execute({packed_map.string(), unpacked_dir.string()});
   Expect(unpack_result.has_value(), "Unpack command should succeed");
-  ExpectFileExists(unpacked_dir / "war3map.w3i");
-  ExpectFileExists(unpacked_dir / "war3map.j");
-  ExpectFileExists(unpacked_dir / "ability.ini");
-  ExpectFileExists(unpacked_dir / "units" / "abilitydata.slk");
-  ExpectFileExists(unpacked_dir / "war3map.w3a");
-  ExpectFileExists(unpacked_dir / "war3mapmisc.txt");
-  ExpectFileExists(unpacked_dir / ".w3x_manifest.json");
+  ExpectFileExists(unpacked_dir / "map" / "war3map.w3i");
+  ExpectFileExists(unpacked_dir / "trigger" / "war3map.j");
+  ExpectFileExists(unpacked_dir / "table" / "ability.ini");
+  ExpectFileExists(unpacked_dir / "table" / "units" / "abilitydata.slk");
+  ExpectFileExists(unpacked_dir / "table" / "war3map.w3a");
+  ExpectFileExists(unpacked_dir / "table" / "war3mapmisc.txt");
+  ExpectFileExists(unpacked_dir / "w3x2lni" / ".w3x_manifest.json");
 
   auto ability_obj =
-      w3x_toolkit::parser::w3u::ParseW3a(ReadBinary(unpacked_dir / "war3map.w3a"));
+      w3x_toolkit::parser::w3u::ParseW3a(
+          ReadBinary(unpacked_dir / "table" / "war3map.w3a"));
   Expect(ability_obj.has_value(), "Generated war3map.w3a should be parseable");
   Expect(ability_obj->custom_objects.size() == 1,
          "Generated war3map.w3a should contain one custom object");
@@ -288,10 +289,10 @@ void TestPackUnpackRoundTrip() {
   Expect(ability_obj->custom_objects[0].custom_id == "A000",
          "Custom object should preserve its custom rawcode");
 
-  WriteText(unpacked_dir / "units" / "abilitydata.slk",
-            ReadText(unpacked_dir / "units" / "abilitydata.slk") +
+  WriteText(unpacked_dir / "table" / "units" / "abilitydata.slk",
+            ReadText(unpacked_dir / "table" / "units" / "abilitydata.slk") +
                 "C;X1;Y2;K\"roundtrip\"\n");
-  WriteText(unpacked_dir / "ability.ini",
+  WriteText(unpacked_dir / "table" / "ability.ini",
             "[A000]\nName=UpdatedAbility\nTip=Updated Tip\n");
 
   auto repack_result =
@@ -303,14 +304,14 @@ void TestPackUnpackRoundTrip() {
       unpack.Execute({repacked_map.string(), repacked_unpacked_dir.string()});
   Expect(re_unpacked_result.has_value(),
          "Unpack command should unpack repacked archive");
-  ExpectFileExists(repacked_unpacked_dir / "war3map.w3a");
-  ExpectFileExists(repacked_unpacked_dir / "war3mapmisc.txt");
-  Expect(ReadText(repacked_unpacked_dir / "units" / "abilitydata.slk")
+  ExpectFileExists(repacked_unpacked_dir / "table" / "war3map.w3a");
+  ExpectFileExists(repacked_unpacked_dir / "table" / "war3mapmisc.txt");
+  Expect(ReadText(repacked_unpacked_dir / "table" / "units" / "abilitydata.slk")
              .find("roundtrip") != std::string::npos,
          "Modified SLK content should survive repack");
 
   auto repacked_ability_obj = w3x_toolkit::parser::w3u::ParseW3a(
-      ReadBinary(repacked_unpacked_dir / "war3map.w3a"));
+      ReadBinary(repacked_unpacked_dir / "table" / "war3map.w3a"));
   Expect(repacked_ability_obj.has_value(),
          "Repacked war3map.w3a should remain parseable");
   Expect(!repacked_ability_obj->custom_objects.empty(),

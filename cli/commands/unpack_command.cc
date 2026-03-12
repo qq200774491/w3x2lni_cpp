@@ -33,7 +33,7 @@ std::filesystem::path MakeTemporaryDirectoryPath() {
 std::string UnpackCommand::Name() const { return "unpack"; }
 
 std::string UnpackCommand::Description() const {
-  return "Unpack a .w3x/.w3m archive to a directory with recovered names";
+  return "Unpack a .w3x/.w3m archive to an external-style workspace";
 }
 
 std::string UnpackCommand::Usage() const {
