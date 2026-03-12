@@ -6,7 +6,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <iomanip>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -14,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/config/config_manager.h"
+#include "core/config/runtime_paths.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "parser/slk/slk_parser.h"
 #include "parser/w3u/w3u_parser.h"
@@ -38,6 +43,17 @@ using SectionEntries = std::vector<std::pair<std::string, std::string>>;
 using IniSections = std::unordered_map<std::string, SectionEntries>;
 using MetadataTable = std::unordered_map<std::string, MetaEntry>;
 using MetadataTables = std::unordered_map<std::string, MetadataTable>;
+
+struct ReverseMetaEntry {
+  std::string key;
+  MetaEntry meta;
+};
+
+struct FieldAggregation {
+  std::optional<std::string> scalar_value;
+  std::map<int, std::string> indexed_values;
+  std::map<int, std::string> repeated_values;
+};
 
 enum class SyntheticType {
   kAbility,
@@ -331,41 +347,58 @@ core::Result<MetadataTables> LoadMetadataTables(const fs::path& metadata_path) {
 }
 
 core::Result<fs::path> ResolvePrebuiltRoot() {
-#ifndef W3X_SOURCE_DIR
-  return std::unexpected(core::Error::ConfigError(
-      "W3X_SOURCE_DIR is not defined; cannot resolve bundled metadata"));
-#else
-  const fs::path source_root(W3X_SOURCE_DIR);
-  const fs::path bundled =
-      source_root / "data" / "zhCN-1.32.8" / "prebuilt";
-  if (fs::exists(bundled)) {
-    return bundled;
-  }
-  const fs::path preferred =
-      source_root / "external" / "data" / "zhCN-1.32.8" / "prebuilt";
-  if (fs::exists(preferred)) {
-    return preferred;
-  }
+  core::ConfigManager config;
+  W3X_RETURN_IF_ERROR(
+      config.LoadDefaults(core::RuntimePaths::ResolveDefaultConfigPath()));
+  W3X_RETURN_IF_ERROR(
+      config.LoadGlobal(core::RuntimePaths::ResolveGlobalConfigPath()));
 
-  const fs::path data_root = source_root / "external" / "data";
-  if (!fs::exists(data_root)) {
-    return std::unexpected(core::Error::FileNotFound(
-        "external/data directory not found under source tree"));
-  }
-
-  for (const auto& entry : fs::directory_iterator(data_root)) {
-    if (!entry.is_directory()) {
-      continue;
+  if (auto data_root = core::RuntimePaths::ResolveDataRoot();
+      data_root.has_value()) {
+    const std::string preferred_version =
+        config.GetString("global", "data", "zhCN-1.32.8");
+    const fs::path preferred = data_root.value() / preferred_version / "prebuilt";
+    if (fs::exists(preferred)) {
+      return preferred;
     }
-    const fs::path candidate = entry.path() / "prebuilt";
-    if (fs::exists(candidate)) {
-      return candidate;
+
+    for (const auto& entry : fs::directory_iterator(data_root.value())) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+      const fs::path candidate = entry.path() / "prebuilt";
+      if (fs::exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  const fs::path source_root = core::RuntimePaths::GetSourceRoot();
+  if (!source_root.empty()) {
+    const std::string preferred_version =
+        config.GetString("global", "data", "zhCN-1.32.8");
+    const fs::path preferred =
+        source_root / "external" / "data" / preferred_version / "prebuilt";
+    if (fs::exists(preferred)) {
+      return preferred;
+    }
+
+    const fs::path fallback_data_root = source_root / "external" / "data";
+    if (fs::exists(fallback_data_root)) {
+      for (const auto& entry : fs::directory_iterator(fallback_data_root)) {
+        if (!entry.is_directory()) {
+          continue;
+        }
+        const fs::path candidate = entry.path() / "prebuilt";
+        if (fs::exists(candidate)) {
+          return candidate;
+        }
+      }
     }
   }
 
   return std::unexpected(core::Error::FileNotFound(
-      "No external prebuilt metadata directory was found"));
-#endif
+      "No bundled or fallback prebuilt metadata directory was found"));
 }
 
 core::Result<std::unordered_set<std::string>> LoadDefaultIds(
@@ -478,6 +511,124 @@ std::vector<std::pair<std::string, std::string>> NormalizeSectionEntries(
   return normalized;
 }
 
+std::string QuoteIniString(std::string_view value) {
+  const bool needs_quotes =
+      value.empty() || value.find(',') != std::string_view::npos ||
+      value.find('"') != std::string_view::npos ||
+      value.find('\r') != std::string_view::npos ||
+      value.find('\n') != std::string_view::npos ||
+      std::isspace(static_cast<unsigned char>(value.front())) ||
+      std::isspace(static_cast<unsigned char>(value.back()));
+  if (!needs_quotes) {
+    return std::string(value);
+  }
+
+  std::string quoted;
+  quoted.reserve(value.size() + 2);
+  quoted.push_back('"');
+  for (char ch : value) {
+    if (ch == '"') {
+      quoted.push_back('"');
+    }
+    quoted.push_back(ch);
+  }
+  quoted.push_back('"');
+  return quoted;
+}
+
+std::string FormatFloat(float value) {
+  std::ostringstream stream;
+  stream << std::setprecision(9) << value;
+  return stream.str();
+}
+
+std::string FormatModificationValue(const parser::w3u::Modification& modification) {
+  switch (modification.type) {
+    case parser::w3u::ModificationType::kInteger:
+      return std::to_string(std::get<std::int32_t>(modification.value));
+    case parser::w3u::ModificationType::kReal:
+    case parser::w3u::ModificationType::kUnreal:
+      return FormatFloat(std::get<float>(modification.value));
+    case parser::w3u::ModificationType::kString:
+      return QuoteIniString(std::get<std::string>(modification.value));
+  }
+  return {};
+}
+
+std::string JoinFieldValues(const FieldAggregation& field) {
+  if (!field.indexed_values.empty()) {
+    const int max_index = field.indexed_values.rbegin()->first;
+    std::string joined;
+    for (int index = 1; index <= max_index; ++index) {
+      if (index > 1) {
+        joined += ",";
+      }
+      if (const auto it = field.indexed_values.find(index);
+          it != field.indexed_values.end()) {
+        joined += it->second;
+      }
+    }
+    return joined;
+  }
+  if (!field.repeated_values.empty()) {
+    const int max_level = field.repeated_values.rbegin()->first;
+    std::string joined;
+    for (int level = 1; level <= max_level; ++level) {
+      if (level > 1) {
+        joined += ",";
+      }
+      if (const auto it = field.repeated_values.find(level);
+          it != field.repeated_values.end()) {
+        joined += it->second;
+      }
+    }
+    return joined;
+  }
+  return field.scalar_value.value_or("");
+}
+
+std::string EncodeRawFieldKey(const parser::w3u::Modification& modification) {
+  return "raw(" + modification.field_id + "," +
+         std::to_string(static_cast<int>(modification.type)) + "," +
+         std::to_string(modification.level) + "," +
+         std::to_string(modification.data_pointer) + ")";
+}
+
+struct RawFieldDescriptor {
+  std::string field_id;
+  parser::w3u::ModificationType type;
+  int level = 0;
+  int data_pointer = 0;
+};
+
+std::optional<RawFieldDescriptor> TryParseRawFieldKey(std::string_view key) {
+  const std::string trimmed = TrimCopy(key);
+  if (!trimmed.starts_with("raw(") || !trimmed.ends_with(")")) {
+    return std::nullopt;
+  }
+  const std::vector<std::string> parts =
+      SplitCsvPreserveEmpty(trimmed.substr(4, trimmed.size() - 5));
+  if (parts.size() != 4 || parts[0].empty()) {
+    return std::nullopt;
+  }
+
+  const auto parsed_type = ParseInt32(parts[1]);
+  const auto parsed_level = ParseInt32(parts[2]);
+  const auto parsed_data_pointer = ParseInt32(parts[3]);
+  if (!parsed_type.has_value() || !parsed_level.has_value() ||
+      !parsed_data_pointer.has_value() || *parsed_type < 0 ||
+      *parsed_type > 3) {
+    return std::nullopt;
+  }
+
+  return RawFieldDescriptor{
+      StripQuotes(parts[0]),
+      static_cast<parser::w3u::ModificationType>(*parsed_type),
+      *parsed_level,
+      *parsed_data_pointer,
+  };
+}
+
 std::optional<std::string> TryResolveParentFromSection(
     const std::string& object_name, const IniSections& sections,
     const std::unordered_set<std::string>& default_ids) {
@@ -555,6 +706,19 @@ core::Result<std::vector<parser::w3u::Modification>> BuildModificationsForField(
   std::vector<parser::w3u::Modification> modifications;
   const auto it = lookup.find(NormalizeKey(key));
   if (it == lookup.end()) {
+    if (const auto raw = TryParseRawFieldKey(key); raw.has_value()) {
+      W3X_ASSIGN_OR_RETURN(
+          auto modification,
+          BuildScalarModification(
+              MetaEntry{
+                  .field = raw->field_id,
+                  .id = raw->field_id,
+                  .type = raw->type,
+                  .data_pointer = raw->data_pointer,
+              },
+              value, raw->level));
+      modifications.push_back(std::move(modification));
+    }
     return modifications;
   }
 
@@ -584,6 +748,231 @@ core::Result<std::vector<parser::w3u::Modification>> BuildModificationsForField(
     modifications.push_back(std::move(modification));
   }
   return modifications;
+}
+
+std::unordered_map<std::string, std::vector<ReverseMetaEntry>> BuildIdLookup(
+    const MetadataTable& metadata) {
+  std::unordered_map<std::string, std::vector<ReverseMetaEntry>> lookup;
+  for (const auto& [key, meta] : metadata) {
+    lookup[NormalizeKey(meta.id)].push_back(ReverseMetaEntry{key, meta});
+  }
+  return lookup;
+}
+
+const ReverseMetaEntry* FindReverseMetaEntry(
+    const std::unordered_map<std::string, std::vector<ReverseMetaEntry>>& lookup,
+    const parser::w3u::Modification& modification) {
+  const auto it = lookup.find(NormalizeKey(modification.field_id));
+  if (it == lookup.end()) {
+    return nullptr;
+  }
+
+  const ReverseMetaEntry* best = nullptr;
+  int best_score = -1;
+  for (const ReverseMetaEntry& candidate : it->second) {
+    if (candidate.meta.type != modification.type) {
+      continue;
+    }
+
+    int score = 0;
+    if (candidate.meta.data_pointer.has_value()) {
+      if (candidate.meta.data_pointer.value() != modification.data_pointer) {
+        continue;
+      }
+      score += 4;
+    } else if (modification.data_pointer == 0) {
+      score += 1;
+    }
+
+    if (candidate.meta.repeat) {
+      score += modification.level > 0 ? 2 : 0;
+    } else if (candidate.meta.index.has_value()) {
+      score += 2;
+    } else if (modification.level == 0) {
+      score += 1;
+    }
+
+    if (score > best_score) {
+      best = &candidate;
+      best_score = score;
+    }
+  }
+  return best;
+}
+
+core::Result<std::optional<GeneratedMapFile>> GenerateDerivedObjectIniFile(
+    const fs::path& input_dir, const MetadataTables& metadata_tables,
+    const SyntheticTypeSpec& spec) {
+  const fs::path input_path = input_dir / spec.output_file;
+  if (!core::FilesystemUtils::Exists(input_path)) {
+    return std::optional<GeneratedMapFile>();
+  }
+
+  W3X_ASSIGN_OR_RETURN(
+      auto bytes,
+      core::FilesystemUtils::ReadBinaryFile(input_path).transform_error(
+          [&input_path](const std::string& error) {
+            return core::Error::IOError("Failed to read object file '" +
+                                        input_path.string() + "': " + error);
+          }));
+  W3X_ASSIGN_OR_RETURN(auto object_data,
+                       parser::w3u::ParseObjectFile(bytes, spec.kind));
+
+  std::string output;
+  bool wrote_anything = false;
+  const auto emit_object =
+      [&](const parser::w3u::ObjectDef& object, bool is_custom)
+      -> core::Result<void> {
+    const std::string section_name =
+        is_custom ? object.custom_id : object.original_id;
+    if (section_name.empty()) {
+      return {};
+    }
+
+    const MetadataTable merged = MergeMetadataForObject(
+        metadata_tables, spec.logical_name, object.original_id);
+    const auto reverse_lookup = BuildIdLookup(merged);
+
+    std::map<std::string, FieldAggregation, std::less<>> fields;
+    std::vector<std::pair<std::string, std::string>> raw_fields;
+    raw_fields.reserve(object.modifications.size());
+    for (const parser::w3u::Modification& modification : object.modifications) {
+      if (const ReverseMetaEntry* meta =
+              FindReverseMetaEntry(reverse_lookup, modification);
+          meta != nullptr) {
+        FieldAggregation& field = fields[meta->key];
+        if (meta->meta.index.has_value()) {
+          field.indexed_values[meta->meta.index.value()] =
+              FormatModificationValue(modification);
+        } else if (meta->meta.repeat) {
+          field.repeated_values[std::max(1, modification.level)] =
+              FormatModificationValue(modification);
+        } else {
+          field.scalar_value = FormatModificationValue(modification);
+        }
+        continue;
+      }
+      raw_fields.push_back(
+          {EncodeRawFieldKey(modification), FormatModificationValue(modification)});
+    }
+
+    if (fields.empty() && raw_fields.empty()) {
+      return {};
+    }
+
+    if (wrote_anything) {
+      output += "\r\n";
+    }
+    output += "[" + section_name + "]\r\n";
+    if (is_custom) {
+      output += "_parent=" + object.original_id + "\r\n";
+    }
+    for (const auto& [key, field] : fields) {
+      output += key + "=" + JoinFieldValues(field) + "\r\n";
+    }
+    std::ranges::sort(raw_fields, [](const auto& lhs, const auto& rhs) {
+      return lhs.first < rhs.first;
+    });
+    for (const auto& [key, value] : raw_fields) {
+      output += key + "=" + value + "\r\n";
+    }
+    wrote_anything = true;
+    return {};
+  };
+
+  for (const parser::w3u::ObjectDef& object : object_data.original_objects) {
+    W3X_RETURN_IF_ERROR(emit_object(object, false));
+  }
+  for (const parser::w3u::ObjectDef& object : object_data.custom_objects) {
+    W3X_RETURN_IF_ERROR(emit_object(object, true));
+  }
+
+  if (!wrote_anything) {
+    return std::optional<GeneratedMapFile>();
+  }
+  return std::optional<GeneratedMapFile>(
+      GeneratedMapFile{spec.input_ini,
+                       std::vector<std::uint8_t>(output.begin(), output.end())});
+}
+
+std::unordered_map<std::string, std::vector<ReverseMetaEntry>>
+BuildMiscFieldLookup(const MetadataTable& metadata) {
+  std::unordered_map<std::string, std::vector<ReverseMetaEntry>> lookup;
+  for (const auto& [key, meta] : metadata) {
+    lookup[NormalizeKey(meta.field)].push_back(ReverseMetaEntry{key, meta});
+  }
+  return lookup;
+}
+
+core::Result<std::optional<GeneratedMapFile>> GenerateDerivedMiscIniFile(
+    const fs::path& input_dir, const MetadataTables& metadata_tables) {
+  const fs::path input_path = input_dir / "war3mapmisc.txt";
+  if (!core::FilesystemUtils::Exists(input_path)) {
+    return std::optional<GeneratedMapFile>();
+  }
+
+  W3X_ASSIGN_OR_RETURN(
+      auto content,
+      core::FilesystemUtils::ReadTextFile(input_path).transform_error(
+          [&input_path](const std::string& error) {
+            return core::Error::IOError("Failed to read misc file '" +
+                                        input_path.string() + "': " + error);
+          }));
+  W3X_ASSIGN_OR_RETURN(auto sections, ParseSectionedText(content));
+
+  std::vector<std::string> section_names;
+  section_names.reserve(sections.size());
+  for (const auto& [name, _] : sections) {
+    section_names.push_back(name);
+  }
+  std::ranges::sort(section_names);
+
+  std::string output;
+  bool wrote_anything = false;
+  for (const std::string& section_name : section_names) {
+    const auto metadata_it = metadata_tables.find(section_name);
+    if (metadata_it == metadata_tables.end()) {
+      continue;
+    }
+    const auto lookup = BuildMiscFieldLookup(metadata_it->second);
+
+    std::map<std::string, std::string, std::less<>> fields;
+    for (const auto& [field_name, raw_value] : sections.at(section_name)) {
+      if (field_name.empty() || field_name.front() == '_') {
+        continue;
+      }
+      const auto lookup_it = lookup.find(NormalizeKey(field_name));
+      if (lookup_it == lookup.end() || lookup_it->second.empty()) {
+        continue;
+      }
+      const ReverseMetaEntry& entry = lookup_it->second.front();
+      if (entry.meta.type == parser::w3u::ModificationType::kString) {
+        fields[entry.key] = QuoteIniString(StripQuotes(raw_value));
+      } else {
+        fields[entry.key] = TrimCopy(raw_value);
+      }
+    }
+
+    if (fields.empty()) {
+      continue;
+    }
+
+    if (wrote_anything) {
+      output += "\r\n";
+    }
+    output += "[" + section_name + "]\r\n";
+    for (const auto& [key, value] : fields) {
+      output += key + "=" + value + "\r\n";
+    }
+    wrote_anything = true;
+  }
+
+  if (!wrote_anything) {
+    return std::optional<GeneratedMapFile>();
+  }
+  return std::optional<GeneratedMapFile>(
+      GeneratedMapFile{"misc.ini",
+                       std::vector<std::uint8_t>(output.begin(), output.end())});
 }
 
 core::Result<std::vector<GeneratedMapFile>> GenerateSyntheticObjectFile(
@@ -789,6 +1178,30 @@ core::Result<std::vector<GeneratedMapFile>> GenerateSyntheticMapFiles(
 
   W3X_ASSIGN_OR_RETURN(auto misc_file,
                        GenerateSyntheticMiscFile(input_dir, metadata_tables));
+  if (misc_file.has_value()) {
+    generated.push_back(std::move(*misc_file));
+  }
+  return generated;
+}
+
+core::Result<std::vector<GeneratedMapFile>> GenerateDerivedTableFiles(
+    const fs::path& input_dir) {
+  W3X_ASSIGN_OR_RETURN(auto prebuilt_root, ResolvePrebuiltRoot());
+  W3X_ASSIGN_OR_RETURN(auto metadata_tables,
+                       LoadMetadataTables(prebuilt_root / "metadata.ini"));
+
+  std::vector<GeneratedMapFile> generated;
+  for (const SyntheticTypeSpec& spec : kSyntheticSpecs) {
+    W3X_ASSIGN_OR_RETURN(auto derived_file,
+                         GenerateDerivedObjectIniFile(input_dir, metadata_tables,
+                                                      spec));
+    if (derived_file.has_value()) {
+      generated.push_back(std::move(*derived_file));
+    }
+  }
+
+  W3X_ASSIGN_OR_RETURN(auto misc_file,
+                       GenerateDerivedMiscIniFile(input_dir, metadata_tables));
   if (misc_file.has_value()) {
     generated.push_back(std::move(*misc_file));
   }

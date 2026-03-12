@@ -10,8 +10,11 @@
 #include <Windows.h>
 #include <ShlObj.h>   // SHGetKnownFolderPath
 #include <KnownFolders.h>
+#elif defined(W3X_PLATFORM_MACOS)
+#include <mach-o/dyld.h>
 #else
 #include <pwd.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
@@ -83,6 +86,49 @@ std::filesystem::path Platform::GetHomeDirectory() {
 
   return {};
 #endif
+}
+
+std::filesystem::path Platform::GetExecutablePath() {
+#ifdef W3X_PLATFORM_WINDOWS
+  std::wstring buffer(MAX_PATH, L'\0');
+  while (true) {
+    DWORD written = GetModuleFileNameW(nullptr, buffer.data(),
+                                       static_cast<DWORD>(buffer.size()));
+    if (written == 0) {
+      return {};
+    }
+    if (written < buffer.size() - 1) {
+      buffer.resize(written);
+      return std::filesystem::path(buffer);
+    }
+    buffer.resize(buffer.size() * 2);
+  }
+#elif defined(W3X_PLATFORM_MACOS)
+  std::uint32_t size = 0;
+  _NSGetExecutablePath(nullptr, &size);
+  std::string buffer(size, '\0');
+  if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
+    return {};
+  }
+  std::error_code ec;
+  return std::filesystem::weakly_canonical(std::filesystem::path(buffer), ec);
+#else
+  std::string buffer(PATH_MAX, '\0');
+  const ssize_t written = readlink("/proc/self/exe", buffer.data(), buffer.size());
+  if (written <= 0) {
+    return {};
+  }
+  buffer.resize(static_cast<std::size_t>(written));
+  return std::filesystem::path(buffer);
+#endif
+}
+
+std::filesystem::path Platform::GetExecutableDirectory() {
+  const std::filesystem::path executable = GetExecutablePath();
+  if (executable.empty()) {
+    return {};
+  }
+  return executable.parent_path();
 }
 
 // ---------------------------------------------------------------------------

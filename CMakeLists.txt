@@ -113,6 +113,10 @@ install(TARGETS w3x_tool
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
+install(DIRECTORY data/
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/data"
+)
+
 # Install public headers preserving the directory structure.
 install(DIRECTORY core/     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/w3x_toolkit/core"     FILES_MATCHING PATTERN "*.h")
 install(DIRECTORY parser/   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/w3x_toolkit/parser"   FILES_MATCHING PATTERN "*.h")

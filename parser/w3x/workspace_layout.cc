@@ -13,6 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "core/config/config_manager.h"
+#include "core/config/runtime_paths.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "parser/w3i/w3i_parser.h"
 #include "parser/w3x/map_archive_io.h"
@@ -320,32 +322,39 @@ core::Result<void> WriteImportList(const fs::path& workspace_dir) {
 }
 
 core::Result<fs::path> ResolveLocaleDirectory() {
-#ifndef W3X_SOURCE_DIR
-  return std::unexpected(core::Error::ConfigError(
-      "W3X_SOURCE_DIR is not defined; cannot resolve bundled locale files"));
-#else
-  const fs::path source_root(W3X_SOURCE_DIR);
-  const fs::path bundled_zhcn = source_root / "data" / "locale" / "zhCN";
-  if (fs::exists(bundled_zhcn / "w3i.lng") &&
-      fs::exists(bundled_zhcn / "lml.lng")) {
-    return bundled_zhcn;
+  core::ConfigManager config;
+  W3X_RETURN_IF_ERROR(
+      config.LoadDefaults(core::RuntimePaths::ResolveDefaultConfigPath()));
+  W3X_RETURN_IF_ERROR(
+      config.LoadGlobal(core::RuntimePaths::ResolveGlobalConfigPath()));
+
+  std::vector<fs::path> candidates;
+  const std::string preferred_lang = config.GetString("global", "lang", "zhCN");
+  if (!preferred_lang.empty() && !preferred_lang.starts_with("${")) {
+    if (auto data_root = core::RuntimePaths::ResolveDataRoot();
+        data_root.has_value()) {
+      candidates.push_back(data_root.value() / "locale" / preferred_lang);
+    }
   }
-  const fs::path bundled_enus = source_root / "data" / "locale" / "enUS";
-  if (fs::exists(bundled_enus / "w3i.lng") &&
-      fs::exists(bundled_enus / "lml.lng")) {
-    return bundled_enus;
+  if (auto data_root = core::RuntimePaths::ResolveDataRoot();
+      data_root.has_value()) {
+    candidates.push_back(data_root.value() / "locale" / "zhCN");
+    candidates.push_back(data_root.value() / "locale" / "enUS");
   }
-  const fs::path zhcn = source_root / "external" / "script" / "locale" / "zhCN";
-  if (fs::exists(zhcn / "w3i.lng") && fs::exists(zhcn / "lml.lng")) {
-    return zhcn;
+
+  const fs::path source_root = core::RuntimePaths::GetSourceRoot();
+  if (!source_root.empty()) {
+    candidates.push_back(source_root / "external" / "script" / "locale" / "zhCN");
+    candidates.push_back(source_root / "external" / "script" / "locale" / "enUS");
   }
-  const fs::path enus = source_root / "external" / "script" / "locale" / "enUS";
-  if (fs::exists(enus / "w3i.lng") && fs::exists(enus / "lml.lng")) {
-    return enus;
+
+  for (const fs::path& candidate : candidates) {
+    if (fs::exists(candidate / "w3i.lng") && fs::exists(candidate / "lml.lng")) {
+      return candidate;
+    }
   }
   return std::unexpected(core::Error::FileNotFound(
       "No locale directory with w3i.lng and lml.lng was found"));
-#endif
 }
 
 core::Result<void> CopyOneFile(const fs::path& source, const fs::path& target) {

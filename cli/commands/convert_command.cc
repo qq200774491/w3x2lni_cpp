@@ -12,10 +12,13 @@
 #include <vector>
 
 #include "cli/commands/map_input_utils.h"
+#include "core/config/config_manager.h"
+#include "core/config/runtime_paths.h"
 #include "core/error/error.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
 #include "parser/w3x/map_archive_io.h"
+#include "parser/w3x/workspace_layout.h"
 
 namespace w3x_toolkit::cli {
 
@@ -44,6 +47,21 @@ class TemporaryDirectory {
  private:
   std::filesystem::path path_;
 };
+
+core::Result<core::ConfigManager> LoadRuntimeConfig(
+    const std::filesystem::path& input_path) {
+  core::ConfigManager config;
+  W3X_RETURN_IF_ERROR(
+      config.LoadDefaults(core::RuntimePaths::ResolveDefaultConfigPath()));
+  W3X_RETURN_IF_ERROR(
+      config.LoadGlobal(core::RuntimePaths::ResolveGlobalConfigPath()));
+  if (core::FilesystemUtils::IsDirectory(input_path)) {
+    const std::filesystem::path map_config =
+        input_path / "w3x2lni" / "config.ini";
+    W3X_RETURN_IF_ERROR(config.LoadMap(map_config));
+  }
+  return config;
+}
 
 }  // namespace
 
@@ -142,6 +160,11 @@ core::Result<void> ConvertCommand::RunConversion(
     const std::filesystem::path& output_path,
     const converter::W3xToLniOptions& options) {
   auto& logger = core::Logger::Instance();
+  W3X_ASSIGN_OR_RETURN(auto config, LoadRuntimeConfig(input_path));
+  auto effective_options = options;
+  effective_options.remove_unused_objects =
+      config.GetBool("slk", "remove_unuse_object",
+                     effective_options.remove_unused_objects);
 
   // Ensure output directory exists (create if needed).
   auto create_result = core::FilesystemUtils::CreateDirectories(output_path);
@@ -154,7 +177,7 @@ core::Result<void> ConvertCommand::RunConversion(
               output_path.string());
 
   converter::W3xToLniConverter converter(input_path, output_path);
-  converter.SetOptions(options);
+  converter.SetOptions(effective_options);
   converter.SetProgressCallback([](const converter::ConversionProgress& p) {
     std::cout << "[" << p.items_done << "/" << p.items_total << "] "
               << p.phase;
@@ -166,6 +189,11 @@ core::Result<void> ConvertCommand::RunConversion(
   auto result = converter.Convert();
   if (!result.has_value()) {
     return std::unexpected(result.error());
+  }
+
+  if (effective_options.generate_config) {
+    W3X_RETURN_IF_ERROR(
+        config.SaveEffective(output_path / "w3x2lni" / "config.ini"));
   }
 
   logger.Info("Conversion complete.");

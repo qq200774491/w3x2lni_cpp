@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <utility>
 
 #include "core/filesystem/filesystem_utils.h"
 #include "core/logger/logger.h"
+#include "parser/w3x/object_pack_generator.h"
 #include "parser/w3x/workspace_layout.h"
 
 namespace w3x_toolkit::converter
@@ -51,6 +53,11 @@ namespace w3x_toolkit::converter
           ".wts", ".w3i", ".w3r", ".w3c", ".w3s"};
       const std::string ext = Lower(path.extension().string());
       return std::ranges::find(kMapExtensions, ext) != kMapExtensions.end();
+    }
+
+    bool StartsWith(std::string_view value, std::string_view prefix)
+    {
+      return value.substr(0, prefix.size()) == prefix;
     }
 
   } // namespace
@@ -276,6 +283,27 @@ namespace w3x_toolkit::converter
 
     auto table_output = output_path_ / "table";
 
+    W3X_ASSIGN_OR_RETURN(
+        auto derived_files,
+        parser::w3x::GenerateDerivedTableFiles(input_path_)
+            .transform_error([](const core::Error& error) {
+              return core::Error::ConvertError(
+                  "Failed to derive table files from object data: " +
+                  error.message());
+            }));
+    for (const auto& generated : derived_files)
+    {
+      auto write_result = core::FilesystemUtils::WriteBinaryFile(
+          table_output / generated.relative_path, generated.content);
+      if (!write_result.has_value())
+      {
+        return std::unexpected(core::Error::IOError(
+            "Failed to write derived table file '" +
+            (table_output / generated.relative_path).string() + "': " +
+            write_result.error()));
+      }
+    }
+
     if (core::FilesystemUtils::IsDirectory(input_path_))
     {
       auto files_result =
@@ -294,57 +322,27 @@ namespace w3x_toolkit::converter
         {
           continue;
         }
-        auto ext = core::FilesystemUtils::GetExtension(file);
-        // SLK / object data files.
-        static const std::vector<std::string> kTableExtensions = {
-            ".slk",
-            ".txt",
-            ".w3u",
-            ".w3t",
-            ".w3a",
-            ".w3b",
-            ".w3d",
-            ".w3q",
-            ".w3h",
-        };
-        bool is_table_file =
-            std::find(kTableExtensions.begin(), kTableExtensions.end(), ext) !=
-            kTableExtensions.end();
-        if (!is_table_file)
+        const auto relative = std::filesystem::relative(file, input_path_);
+        const std::string workspace_path =
+            parser::w3x::ToWorkspacePath(relative.generic_string());
+        if (!StartsWith(workspace_path, "table/"))
         {
           continue;
         }
 
-        // Read the file and write it to table/ as-is for now.
-        // Full SLK -> INI conversion requires the SLK parser.
-        auto relative = std::filesystem::relative(file, input_path_);
-        auto dest = table_output / relative;
-        dest.replace_extension(".ini");
-
-        auto parent_result =
-            core::FilesystemUtils::CreateDirectories(dest.parent_path());
+        const auto dest = output_path_ / workspace_path;
+        auto parent_result = core::FilesystemUtils::CreateDirectories(dest.parent_path());
         if (!parent_result.has_value())
         {
           return std::unexpected(core::Error::IOError(
               "Failed to create directory: " + parent_result.error()));
         }
 
-        auto content = core::FilesystemUtils::ReadTextFile(file);
-        if (!content.has_value())
+        auto copy_result = core::FilesystemUtils::CopyFile(file, dest);
+        if (!copy_result.has_value())
         {
-          core::Logger::Instance().Warn("W3xToLni: failed to read {}: {}",
-                                        file.string(), content.error());
-          continue;
-        }
-
-        // Write the raw content -- when the SLK parser is available this
-        // will be replaced with proper INI serialization.
-        auto write_result =
-            core::FilesystemUtils::WriteTextFile(dest, content.value());
-        if (!write_result.has_value())
-        {
-          core::Logger::Instance().Warn("W3xToLni: failed to write {}: {}",
-                                        dest.string(), write_result.error());
+          core::Logger::Instance().Warn("W3xToLni: failed to copy {}: {}",
+                                        file.string(), copy_result.error());
         }
         ++index;
       }

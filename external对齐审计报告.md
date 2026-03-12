@@ -36,6 +36,152 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这次完成的是“输入模型第一阶段对齐”。
 - 还没有完成 `external` 那种完整统一转换管线，尤其是 `convert` 的真实语义转换、工作区布局统一和 `Lni/Obj/Slk` 三模式仍未对齐。
 
+### 2026-03-12 第 2 至第 4 个已落地点
+
+本轮继续完成：
+
+- CLI 新增 `help`、`version`、`lni` 三个对齐入口
+- 运行时数据已优先改用仓库内 `data/`，不再把 `external/` 当成唯一来源
+- `convert` 工作区已补齐 `.w3x` marker、`w3x2lni/locale`、`table/w3i.ini`、`table/imp.ini`
+- `convert` 已把模型/贴图输出到 `resource/`，声音输出到 `sound/`
+- 对象打包已从 `w3a/w3h/w3u/w3t/w3q` 扩到 `w3b/w3d`
+- smoke test 已覆盖上述新增行为
+
+新增/更新代码：
+
+- `cli/cli_app.cc`
+- `cli/commands/help_command.h`
+- `cli/commands/help_command.cc`
+- `cli/commands/version_command.h`
+- `cli/commands/version_command.cc`
+- `cli/commands/lni_command.h`
+- `cli/commands/lni_command.cc`
+- `parser/w3x/workspace_layout.h`
+- `parser/w3x/workspace_layout.cc`
+- `parser/w3x/object_pack_generator.h`
+- `parser/w3x/object_pack_generator.cc`
+- `converter/w3x2lni/w3x_to_lni.cc`
+- `tests/smoke_tests.cc`
+- `data/locale/**`
+- `data/zhCN-1.32.8/prebuilt/**`
+
+已验证：
+
+```powershell
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe --help
+.\build2\bin\Release\w3x_tool.exe help lni
+.\build2\bin\Release\w3x_tool.exe version
+```
+
+### 2026-03-12 第 5 至第 8 个已落地点
+
+本轮继续完成：
+
+- CLI 新增 `config`、`template`、`log` 三个真实命令
+- `core/config` 已从通用 JSON 容器改为纯 C++ 分层 INI 配置管理器
+- `convert` 现在会生成 `w3x2lni/config.ini`，并把默认配置/全局配置接进转换流程
+- locale 与 `prebuilt` 运行时选择已开始读取配置中的 `global.lang` / `global.data`
+- 新增 `core/config/runtime_paths.*` 与 `Platform::GetExecutablePath()`，运行时会从当前目录、可执行文件目录、源码目录解析 `data/`
+- 安装规则已补充 `data/` 打包，不再只适合源码树直接运行
+- smoke test 已覆盖 `config/template/log` 与 `w3x2lni/config.ini`
+
+新增/更新代码：
+
+- `core/config/config_manager.h`
+- `core/config/config_manager.cc`
+- `core/config/runtime_paths.h`
+- `core/config/runtime_paths.cc`
+- `core/platform/platform.h`
+- `core/platform/platform.cc`
+- `core/CMakeLists.txt`
+- `data/default_config.ini`
+- `cli/commands/config_command.h`
+- `cli/commands/config_command.cc`
+- `cli/commands/template_command.h`
+- `cli/commands/template_command.cc`
+- `cli/commands/log_command.h`
+- `cli/commands/log_command.cc`
+- `cli/commands/convert_command.cc`
+- `parser/w3x/workspace_layout.cc`
+- `parser/w3x/object_pack_generator.cc`
+- `tests/smoke_tests.cc`
+- `CMakeLists.txt`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe help config
+.\build2\bin\Release\w3x_tool.exe help template
+.\build2\bin\Release\w3x_tool.exe log --path
+```
+
+说明：
+
+- 这一轮完成的是“配置系统第一阶段对齐 + 运行时路径第二阶段对齐 + CLI 第二阶段扩面”。
+- 仍然没有完成 `obj/slk/mpq/test` 剩余命令面，也还没有把大部分配置项真正接入语义级转换。
+
+### 2026-03-12 第 9 个已落地点
+
+本轮继续完成：
+
+- `convert` 不再把对象二进制简单改扩展名伪装成 `.ini`
+- 已新增纯 C++ 反向派生链：
+  - `war3map.w3a/w3b/w3d/w3h/w3q/w3t/w3u -> ability/destructable/doodad/buff/upgrade/item/unit.ini`
+  - `war3mapmisc.txt -> misc.ini`
+- metadata 中无法识别的对象字段，现会以 `raw(field,type,level,data_pointer)` 语法落盘
+- `pack` 现已能重新读取上述 `raw(...)` 字段并回生成原始对象修改
+- `convert` 与 `unpack` 的 table 侧分类规则更接近，不再把任意 `.txt/.w3*` 误写成假 `.ini`
+- smoke test 已覆盖：
+  - `war3map.w3a -> ability.ini`
+  - `war3mapmisc.txt -> misc.ini`
+  - 未知字段 `raw(...)` 的 `convert -> pack -> unpack` 回环
+
+新增/更新代码：
+
+- `parser/w3x/object_pack_generator.h`
+- `parser/w3x/object_pack_generator.cc`
+- `converter/w3x2lni/w3x_to_lni.cc`
+- `tests/smoke_tests.cc`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这一轮完成的是“对象表数据第二阶段对齐”。
+- 仍未达到 `external` 的完整 `Lni/Obj/Slk` 语义体系，也还没有补齐 `txt.ini`、`WTG/WCT/LML` 等大缺口。
+
+### 2026-03-12 第 10 个已落地点
+
+本轮继续完成：
+
+- CLI 新增 `test` 命令
+- `test` 会自动发现并执行 `w3x_smoke_tests`，不再只能靠外部手工调用 `ctest` 或测试可执行文件
+
+新增/更新代码：
+
+- `cli/commands/test_command.h`
+- `cli/commands/test_command.cc`
+- `cli/cli_app.cc`
+
+已验证：
+
+```powershell
+.\build2\bin\Release\w3x_tool.exe help test
+.\build2\bin\Release\w3x_tool.exe test
+```
+
+说明：
+
+- 这是命令面对齐的补强项，不改变核心转换语义。
+
 ## 1. 审计目标
 
 本次审计的目标不是判断“当前项目是否可用”，而是判断：
@@ -77,6 +223,9 @@ ctest --test-dir build2 -C Release --output-on-failure
    .\build2\bin\Release\w3x_tool.exe analyze --help
    .\build2\bin\Release\w3x_tool.exe unpack --help
    .\build2\bin\Release\w3x_tool.exe pack --help
+   .\build2\bin\Release\w3x_tool.exe help config
+   .\build2\bin\Release\w3x_tool.exe help template
+   .\build2\bin\Release\w3x_tool.exe log --path
    ```
 
 3. 测试实测  
@@ -102,11 +251,11 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 命令壳层：部分对齐
 - MPQ 读写基础能力：部分对齐
 - 输入模型（目录/MPQ）：已完成第一阶段部分对齐
-- 工作区目录结构：部分对齐
+- 工作区目录结构：已完成第一阶段部分对齐
 - 真实对象语义转换：未对齐
 - `Lni/Obj/Slk` 三格式模型：未对齐
 - 触发器 `WTG/WCT/LML` 管线：未对齐
-- 配置/模板/多版本数据/语言包/插件：未对齐
+- 配置/模板/多版本数据/语言包/插件：仍未对齐，但已开始内置化数据资产
 - GUI 用户工作流：未对齐
 - 行为级测试深度：未对齐
 
@@ -148,11 +297,18 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 当前命令面：
 
+- `help`
+- `version`
+- `config`
 - `convert`
+- `lni`
 - `extract`
 - `analyze`
 - `unpack`
 - `pack`
+- `template`
+- `log`
+- `test`
 
 审计结论：
 
@@ -236,7 +392,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这是**最根本的未对齐**。
 - 当前项目完成的是“文件工作流”，不是“格式体系对齐”。
 
-### 5.2 `convert` 还停留在“目录复制/改后缀”级别，没有对齐参考项目的真实转换语义
+### 5.2 `convert` 已从“目录复制/改后缀”推进到“部分对象语义转换”，但仍未对齐参考项目的完整转换语义
 
 当前项目证据：
 
@@ -247,11 +403,10 @@ ctest --test-dir build2 -C Release --output-on-failure
 关键事实：
 
 - `实现计划.md` 已明确写出：下一阶段才要把 `w3x -> lni` 从“目录复制 + 基础落盘”升级为真实对象数据转换。
-- `W3xToLniConverter::ConvertTableData()` 当前做的是：
-  - 扫目录
-  - 识别 `.slk/.txt/.w3u/.w3a/...`
-  - 读取文本
-  - 直接写成 `.ini`
+- 当前 `W3xToLniConverter::ConvertTableData()` 已开始做两类真实处理：
+  - 复用 bundled metadata，把 `war3map.w3a/w3b/w3d/w3h/w3q/w3t/w3u` 反向导出为 `*.ini`
+  - 把 `war3mapmisc.txt` 反向导出为 `misc.ini`
+- 同时会按工作区分类规则复制已有 `ability.ini`、`units/*.slk` 等 table 文件，不再盲目改后缀
 - `ExtractTriggers()` 当前只是复制 `.j/.lua/.ai`。
 - `WriteConfig()` 只写出一个很薄的 `w3x2lni.ini`。
 
@@ -267,9 +422,10 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 审计结论：
 
-- 当前 `convert` 命令**只对齐了名字，没有对齐语义**。
+- 这一项已不再是“纯壳层命令”。
+- 但它仍然不是 `external` 那种完整的前端/后端语义转换管线。
 
-### 5.3 对象数据打包/回包只覆盖一部分，远未对齐参考项目
+### 5.3 对象数据打包/回包已推进到第二阶段，但仍远未对齐参考项目
 
 当前项目证据：
 
@@ -280,16 +436,27 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 关键事实：
 
-- 当前仅合成以下对象文件：
+- 本轮之前仅合成以下对象文件：
   - `war3map.w3a`
   - `war3map.w3h`
   - `war3map.w3u`
   - `war3map.w3t`
   - `war3map.w3q`
   - `war3mapmisc.txt`
-- 没有看到对应：
+- 本轮已补齐：
   - `war3map.w3b`
   - `war3map.w3d`
+- 本轮继续补齐了反向链：
+  - `war3map.w3a -> ability.ini`
+  - `war3map.w3b -> destructable.ini`
+  - `war3map.w3d -> doodad.ini`
+  - `war3map.w3h -> buff.ini`
+  - `war3map.w3q -> upgrade.ini`
+  - `war3map.w3t -> item.ini`
+  - `war3map.w3u -> unit.ini`
+  - `war3mapmisc.txt -> misc.ini`
+- 对 metadata 无法识别的字段，已新增 `raw(...)` 保底语法，确保 `convert -> pack` 时不直接丢字段
+- 仍然没有看到对应：
   - `txt.ini` 的完整回写链
   - `doo/w3s/w3r` 等参考项目 TODO/能力边界中的其它地图语义文件
 
@@ -306,7 +473,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 审计结论：
 
-- 当前对象链路只能算“部分对齐”。
+- 当前对象链路已从“只能正向合成一部分 obj 文件”推进到“已有一条可回环的 ini <-> obj 部分链路”。
 - 如果目标是严格复现 `external` 的对象行为规则，当前还差很远。
 
 ### 5.4 触发器管线基本没有对齐：缺失 `WTG/WCT/LML` 体系
@@ -337,7 +504,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 - 这是**结构性缺口**。
 - 只要这块没补，当前项目就不能说“严格对齐 external 的触发器能力”。
 
-### 5.5 命令面没有对齐：当前只有 5 个命令，参考项目有 12 个 CLI 入口
+### 5.5 命令面：已推进到第二阶段部分对齐，但距离参考项目完整 CLI 仍有差距
 
 参考项目证据：
 
@@ -364,25 +531,29 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `cli/cli_app.cc`
 - `cli/commands/`
 
-差异：
+当前 C++ 项目目前已补齐：
+
+- `help`
+- `version`
+- `lni`
+- `config`
+- `template`
+- `log`
+- `test`
+
+剩余差异：
 
 - 当前没有：
   - `obj`
   - `slk`
-  - `lni`
-  - `config`
-  - `template`
-  - `test`
-  - `version` 的独立子命令
-  - `log`
   - `mpq` 型工具命令
 
 审计结论：
 
-- 命令层面对齐度明显不足。
-- 这一点不是“文档没写”，而是命令入口本身就不存在。
+- 这一项已从“第一阶段壳层对齐”推进到“第二阶段可用命令面对齐”。
+- 但离 `external` 的完整命令面仍然有明显差距。
 
-### 5.6 配置系统没有对齐：当前是通用 JSON 配置壳，不是参考项目的分层 INI 配置体系
+### 5.6 配置系统：已完成第一阶段纯 C++ 分层 INI 骨架，但距离参考项目完整语义仍有差距
 
 参考项目证据：
 
@@ -396,22 +567,34 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 - `core/config/config_manager.h`
 - `core/config/config_manager.cc`
+- `core/config/runtime_paths.h`
+- `core/config/runtime_paths.cc`
+- `cli/commands/config_command.cc`
+- `cli/commands/convert_command.cc`
+- `data/default_config.ini`
 
-差异：
+当前已完成的对齐：
 
-- `external` 的配置是：
-  - 默认配置
-  - 全局配置
-  - 地图内配置
-  - 配置项校验/注释/显示规则
-  - 与 CLI、语言、数据版本联动
-- 当前 C++ 项目只有一个通用 JSON 配置容器，没有形成 `external` 那套配置语义。
+- 已形成：
+  - 默认配置 `data/default_config.ini`
+  - 全局配置 `config.ini`
+  - 地图工作区配置 `w3x2lni/config.ini`
+- 新增 `config` CLI，可查看和更新默认/全局/地图三级合并后的值
+- `convert` 现在会输出 `w3x2lni/config.ini`
+- locale 与 `prebuilt` 的运行时选择，已经开始通过 `global.lang` / `global.data` 联动
+
+仍然存在的差异：
+
+- `external` 还有配置项注释、显示规则、严格校验、自动打开当前地图等 CLI 语义。
+- 当前 C++ 版虽然有类型校验，但还没有把 `config_define.lua` 的说明文本和完整约束全部移植过来。
+- 更关键的是：大部分配置项仍未真正驱动语义级转换，只是开始接进运行时资源选择和工作区配置落盘。
 
 审计结论：
 
-- 当前配置系统**不是同一层级的东西**。
+- 这一项已从“完全未对齐”推进到“第一阶段部分对齐”。
+- 但还不能宣称等价于 `external` 的配置体系。
 
-### 5.7 模板、预构建索引、多版本数据仓、语言包、插件体系基本都没有对齐
+### 5.7 模板、预构建索引、多版本数据仓、语言包、插件体系仍未对齐，但已开始内置化
 
 参考项目证据：
 
@@ -430,21 +613,32 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 - `README.md`
 - `core/config/config_manager.*`
+- `cli/commands/template_command.cc`
+- `data/default_config.ini`
 - `parser/w3x/object_pack_generator.cc`
 - `parser/w3x/workspace_layout.cc`
+- `CMakeLists.txt`
 
-差异：
+当前已完成的改进：
+
+- 已把 `prebuilt` 和 locale 资源复制到仓库内 `data/`
+- 运行时现在优先从 `data/` 读取，而不是直接绑定 `external/`
+- 已新增 `template` 命令，可直接导出 bundled `Melee/Custom` 模板
+- 安装规则现在会把 `data/` 随可执行文件一起打包
+- 数据版本选择已开始读取配置中的 `global.data`
+
+剩余差异：
 
 - `external` 有完整的数据版本仓、预构建 metadata、模板输出、语言包和插件机制。
-- 当前仓库没有对应的纯 C++ 数据加载/管理架构。
-- 当前只是在少数地方“读取 `external/` 现成文件”。
+- 当前仓库仍然没有对应的纯 C++ 插件架构和完整数据版本管理器。
+- 当前内置的仍然只是少量静态资源和单一主版本，不是 `external` 那种多版本数据仓。
 
 审计结论：
 
-- 这块是“参考项目的基础设施层”。
-- 当前 C++ 项目几乎还没真正接管。
+- 这块仍然是“参考项目的基础设施层”缺口。
+- 但当前 C++ 项目已经从“只会引用资源”推进到“会打包、会导出、会按配置选择资源”。
 
-### 5.8 当前项目实际上仍依赖 `external/` 作为运行时数据来源，和项目自述冲突
+### 5.8 运行时数据依赖：已进一步推进到“支持相对可执行文件解析 data，并保留 external 兼容回退”
 
 这是本次审计发现的一个非常关键的问题。
 
@@ -454,31 +648,37 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 实际源码证据：
 
-- `parser/CMakeLists.txt`
+- `core/config/runtime_paths.cc`
+- `core/platform/platform.cc`
 - `parser/w3x/object_pack_generator.cc`
 - `parser/w3x/workspace_layout.cc`
+- `CMakeLists.txt`
 
-关键事实：
+旧问题：
 
-- `parser/CMakeLists.txt` 通过编译定义把 `W3X_SOURCE_DIR` 固定到源码根目录。
-- `object_pack_generator.cc` 在运行时去读取：
-  - `external/data/.../prebuilt/metadata.ini`
-  - `external/data/.../prebuilt/Custom/*.ini`
-- `workspace_layout.cc` 在运行时去读取：
-  - `external/script/locale/zhCN/w3i.lng`
-  - `external/script/locale/zhCN/lml.lng`
+- 之前 `object_pack_generator.cc` 和 `workspace_layout.cc` 会直接从 `external/` 读取运行时元数据和 locale。
 
-这意味着：
+当前状态：
 
-- 当前二进制并没有真正摆脱 `external/`。
-- 如果源码目录结构变化、安装目录变化、`external/` 缺失，相关能力就会失效。
+- 本轮已新增：
+  - `data/zhCN-1.32.8/prebuilt/**`
+  - `data/locale/zhCN/**`
+  - `data/locale/enUS/**`
+- 运行时现在优先从 `data/` 读取 bundled 资源。
+- 运行时路径现在会从：
+  - 当前工作目录
+  - 可执行文件目录
+  - 源码目录
+  依次解析 `data/`
+- `data/` 现在已加入安装规则，可随二进制一起发布
+- `external/` 仍保留为回退来源，用于兼容当前开发环境。
 
 审计结论：
 
-- 这一点既是**设计偏差**，也是**对 README 承诺的违背**。
-- 如果目标是纯 C++ 独立实现，这个问题必须优先处理。
+- 这一项已从“只能在源码树里跑”推进到“开始具备独立打包能力”。
+- 仍未达到完全独立发布，因为代码还保留 `external/` 回退路径，且 bundled 数据版本仍然偏少。
 
-### 5.9 工作区分类本身存在内部不一致，说明“external 风格工作区”还没有收敛
+### 5.9 工作区分类：已完成第一阶段收敛，但还没有完全统一
 
 当前项目证据：
 
@@ -486,28 +686,37 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `parser/w3x/workspace_layout.cc`
 - `tests/smoke_tests.cc`
 
-关键不一致：
+本轮已完成的收敛：
 
-1. `convert` 的输出目录只准备了：
-   - `map/`
-   - `table/`
-   - `trigger/`
+- `convert` 现在会创建：
+  - `.w3x`
+  - `map/`
+  - `resource/`
+  - `sound/`
+  - `table/`
+  - `trigger/`
+  - `w3x2lni/`
+- `convert` 现在会生成：
+  - `table/w3i.ini`
+  - `table/imp.ini`
+  - `w3x2lni/locale/w3i.lng`
+  - `w3x2lni/locale/lml.lng`
+  - `w3x2lni/config.ini`
+- `ExtractMapFiles()` 已不再把模型/贴图/声音混放到 `map/`
 
-   但 `workspace_layout.cc` 明确还支持：
-   - `resource/`
-   - `sound/`
-   - `w3x2lni/`
+仍然存在的不一致：
 
-2. `workspace_layout.cc` 会把资源文件映射到 `resource/`、声音映射到 `sound/`。  
-   但 `W3xToLniConverter::ExtractMapFiles()` 会把 `.mdx/.blp/.wav/.mp3` 直接复制到 `map/`。
+1. `convert` 仍然把 `.j/.lua/.ai` 直接复制到 `trigger/`。  
+   但参考项目里 raw script 与 trigger 语义文件并不是同一层概念。
 
-3. `convert` 会把脚本复制到 `trigger/`。  
-   但 `workspace_layout.cc` 对 `war3map*` 和 `scripts/` 的路径归类偏向 `map/`。
+2. `convert` 生成的 `table/*.ini` 已经开始承载对象语义，但仍然不是 `external` 等价的完整语义产物。
+
+3. `convert` 与 `unpack` 虽然目录形态更接近了，但高层语义仍未完全统一。
 
 审计结论：
 
-- 当前仓库内部对“标准工作区长什么样”都还没有完全统一。
-- 这说明它距离“严格对齐 external 的稳定布局规则”还有距离。
+- 这一项已从“第一阶段部分对齐”推进到“第二阶段部分对齐”。
+- 但距离 `external` 的稳定布局规则和语义规则仍然有距离。
 
 ### 5.10 输入模型：已完成第一阶段部分对齐，但还没有达到 `external` 的统一转换层
 
@@ -622,7 +831,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 这部分不是直接拿来和 `external` 对比得出的结论，而是当前仓库内部已经暴露出的风险。
 
-### 6.1 `remove_unused_objects` / `inline_wts_strings` 选项目前只写进配置，不参与真实转换
+### 6.1 `remove_unused_objects` / `inline_wts_strings` 选项仍未参与真实转换，只是开始接入配置层
 
 证据：
 
@@ -633,7 +842,8 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 - 选项结构里有这些字段。
 - `WriteConfig()` 会把它们写到 `w3x2lni.ini`。
-- 但转换流程中没有看到真正使用这些选项做行为分支。
+- `convert` 现在会读取分层 INI 配置，并把工作区配置输出到 `w3x2lni/config.ini`。
+- 但转换流程中仍然没有看到真正使用这些选项做对象裁剪或字符串内联等行为分支。
 
 结论：
 

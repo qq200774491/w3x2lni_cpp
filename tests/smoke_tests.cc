@@ -13,12 +13,16 @@
 #include <vector>
 
 #include "cli/commands/analyze_command.h"
+#include "cli/commands/config_command.h"
 #include "cli/commands/convert_command.h"
 #include "cli/commands/extract_command.h"
+#include "cli/commands/log_command.h"
 #include "cli/commands/pack_command.h"
+#include "cli/commands/template_command.h"
 #include "cli/commands/unpack_command.h"
 #include "core/filesystem/filesystem_utils.h"
 #include "parser/w3u/w3u_parser.h"
+#include "parser/w3u/w3u_writer.h"
 
 namespace fs = std::filesystem;
 
@@ -45,6 +49,19 @@ class TemporaryDirectory {
 
  private:
   fs::path path_;
+};
+
+class CurrentDirectoryGuard {
+ public:
+  explicit CurrentDirectoryGuard(const fs::path& path)
+      : original_(fs::current_path()) {
+    fs::current_path(path);
+  }
+
+  ~CurrentDirectoryGuard() { fs::current_path(original_); }
+
+ private:
+  fs::path original_;
 };
 
 void Expect(bool condition, const std::string& message) {
@@ -187,6 +204,48 @@ void WriteBinary(const fs::path& path, const std::vector<std::uint8_t>& content)
   }
 }
 
+void WriteMinimalRuntimeData(const fs::path& root) {
+  const fs::path data_root = root / "data";
+  fs::create_directories(data_root / "zhCN-1.32.8" / "prebuilt" / "Melee");
+  fs::create_directories(data_root / "zhCN-1.32.8" / "prebuilt" / "Custom");
+
+  WriteText(data_root / "default_config.ini",
+            "[global]\n"
+            "lang = zhCN\n"
+            "data = zhCN-1.32.8\n"
+            "data_ui = ${YDWE}\n"
+            "data_meta = ${DEFAULT}\n"
+            "data_wes = ${DEFAULT}\n"
+            "data_load = script\\backend\\data_load.lua\n"
+            "\n"
+            "[lni]\n"
+            "read_slk = false\n"
+            "find_id_times = 0\n"
+            "export_lua = true\n"
+            "extra_check = false\n"
+            "\n"
+            "[slk]\n"
+            "remove_unuse_object = true\n"
+            "optimize_jass = true\n"
+            "mdx_squf = true\n"
+            "remove_we_only = true\n"
+            "slk_doodad = true\n"
+            "find_id_times = 10\n"
+            "confused = false\n"
+            "confusion = abc123_\n"
+            "extra_check = false\n"
+            "\n"
+            "[obj]\n"
+            "read_slk = false\n"
+            "find_id_times = 0\n"
+            "extra_check = false\n");
+
+  WriteText(data_root / "zhCN-1.32.8" / "prebuilt" / "Melee" / "ability.ini",
+            "[A000]\nName=Melee Ability\n");
+  WriteText(data_root / "zhCN-1.32.8" / "prebuilt" / "Custom" / "unit.ini",
+            "[hfoo]\nName=Custom Footman\n");
+}
+
 void TestDirectoryModeCommands() {
   TemporaryDirectory temp;
   const fs::path map_dir = temp.path() / "map_dir";
@@ -213,7 +272,7 @@ void TestDirectoryModeCommands() {
   ExpectFileExists(convert_out / ".w3x");
   ExpectFileExists(convert_out / "map" / "war3map.w3i");
   ExpectFileExists(convert_out / "map" / "war3map.wts");
-  ExpectFileExists(convert_out / "table" / "units" / "war3map.ini");
+  ExpectFileExists(convert_out / "table" / "units" / "war3map.w3u");
   ExpectFileExists(convert_out / "trigger" / "scripts" / "war3map.j");
   ExpectFileExists(convert_out / "resource" / "textures" / "Preview.blp");
   ExpectFileExists(convert_out / "sound" / "sound" / "Theme.mp3");
@@ -221,6 +280,7 @@ void TestDirectoryModeCommands() {
   ExpectFileExists(convert_out / "table" / "imp.ini");
   ExpectFileExists(convert_out / "w3x2lni" / "locale" / "w3i.lng");
   ExpectFileExists(convert_out / "w3x2lni" / "locale" / "lml.lng");
+  ExpectFileExists(convert_out / "w3x2lni" / "config.ini");
   ExpectFileExists(convert_out / "w3x2lni.ini");
 
   w3x_toolkit::cli::ExtractCommand extract;
@@ -293,7 +353,45 @@ void TestPackedArchiveCommands() {
   ExpectFileExists(convert_out / "table" / "imp.ini");
   ExpectFileExists(convert_out / "w3x2lni" / "locale" / "w3i.lng");
   ExpectFileExists(convert_out / "w3x2lni" / "locale" / "lml.lng");
+  ExpectFileExists(convert_out / "w3x2lni" / "config.ini");
   ExpectFileExists(convert_out / "w3x2lni.ini");
+}
+
+void TestConfigTemplateAndLogCommands() {
+  TemporaryDirectory temp;
+  WriteMinimalRuntimeData(temp.path());
+  CurrentDirectoryGuard cwd_guard(temp.path());
+
+  w3x_toolkit::cli::ConfigCommand config;
+  auto config_result = config.Execute({"lni.export_lua=false"});
+  Expect(config_result.has_value(), "Config command should update global config");
+  ExpectFileExists(temp.path() / "config.ini");
+  Expect(ReadText(temp.path() / "config.ini").find("export_lua = false") !=
+             std::string::npos,
+         "Global config should persist normalized values");
+
+  const fs::path workspace = temp.path() / "workspace";
+  auto map_config_result =
+      config.Execute({"--map", workspace.string(), "obj.find_id_times=7"});
+  Expect(map_config_result.has_value(),
+         "Config command should update map config");
+  ExpectFileExists(workspace / "w3x2lni" / "config.ini");
+  Expect(ReadText(workspace / "w3x2lni" / "config.ini")
+                 .find("find_id_times = 7") != std::string::npos,
+         "Map config should persist normalized values");
+
+  w3x_toolkit::cli::TemplateCommand template_command;
+  const fs::path template_out = temp.path() / "template_export";
+  auto template_result = template_command.Execute({template_out.string()});
+  Expect(template_result.has_value(),
+         "Template command should export bundled templates");
+  ExpectFileExists(template_out / "Melee" / "ability.ini");
+  ExpectFileExists(template_out / "Custom" / "unit.ini");
+
+  WriteText(temp.path() / "w3x_toolkit.log", "line1\nline2\n");
+  w3x_toolkit::cli::LogCommand log;
+  auto log_result = log.Execute({});
+  Expect(log_result.has_value(), "Log command should print the current log file");
 }
 
 void TestPackUnpackRoundTrip() {
@@ -414,6 +512,107 @@ void TestPackUnpackRoundTrip() {
          "Repacked war3map.w3a should be regenerated from ability.ini");
 }
 
+void TestConvertObjectBinaryToIniRoundTrip() {
+  TemporaryDirectory temp;
+  const fs::path map_dir = temp.path() / "object_binary_input";
+  const fs::path convert_out = temp.path() / "object_binary_workspace";
+  const fs::path repacked_map = temp.path() / "object_binary_repacked.w3x";
+  const fs::path repacked_unpacked_dir = temp.path() / "object_binary_unpacked";
+
+  fs::create_directories(map_dir);
+  WriteBinary(map_dir / "war3map.w3i", BuildMinimalW3i());
+
+  w3x_toolkit::parser::w3u::ObjectData object_data;
+  object_data.version = 2;
+  w3x_toolkit::parser::w3u::ObjectDef ability;
+  ability.original_id = "ANcl";
+  ability.custom_id = "A000";
+  ability.modifications.push_back({
+      .field_id = "anam",
+      .type = w3x_toolkit::parser::w3u::ModificationType::kString,
+      .level = 0,
+      .data_pointer = 0,
+      .value = std::string("BinaryConvertedAbility"),
+  });
+  ability.modifications.push_back({
+      .field_id = "zzzz",
+      .type = w3x_toolkit::parser::w3u::ModificationType::kString,
+      .level = 2,
+      .data_pointer = 7,
+      .value = std::string("mystery-value"),
+  });
+  object_data.custom_objects.push_back(ability);
+
+  auto ability_bytes =
+      w3x_toolkit::parser::w3u::SerializeObjectFile(
+          object_data, w3x_toolkit::parser::w3u::ObjectFileKind::kComplex);
+  Expect(ability_bytes.has_value(), "Ability object file should serialize");
+  WriteBinary(map_dir / "war3map.w3a", ability_bytes.value());
+  WriteText(map_dir / "war3mapmisc.txt", "[HERO]\nName=Binary Hero\n");
+
+  w3x_toolkit::cli::ConvertCommand convert;
+  auto convert_result =
+      convert.Execute({map_dir.string(), convert_out.string()});
+  Expect(convert_result.has_value(),
+         "Convert should derive ini files from binary object data");
+  ExpectFileExists(convert_out / "table" / "ability.ini");
+  ExpectFileExists(convert_out / "table" / "misc.ini");
+
+  const std::string ability_ini = ReadText(convert_out / "table" / "ability.ini");
+  Expect(ability_ini.find("[A000]") != std::string::npos,
+         "Derived ability.ini should contain the custom object section");
+  Expect(ability_ini.find("_parent=ANcl") != std::string::npos,
+         "Derived ability.ini should preserve parent rawcode");
+  Expect(ability_ini.find("name=BinaryConvertedAbility") != std::string::npos,
+         "Derived ability.ini should decode known metadata fields");
+  Expect(ability_ini.find("raw(zzzz,3,2,7)=mystery-value") !=
+             std::string::npos,
+         "Derived ability.ini should preserve unknown fields via raw syntax");
+  Expect(ReadText(convert_out / "table" / "misc.ini")
+                 .find("name=Binary Hero") != std::string::npos,
+         "Derived misc.ini should decode war3mapmisc.txt");
+
+  w3x_toolkit::cli::PackCommand pack;
+  auto repack_result =
+      pack.Execute({convert_out.string(), repacked_map.string()});
+  Expect(repack_result.has_value(),
+         "Pack should accept convert output containing raw fallback syntax");
+
+  w3x_toolkit::cli::UnpackCommand unpack;
+  auto unpack_result =
+      unpack.Execute({repacked_map.string(), repacked_unpacked_dir.string()});
+  Expect(unpack_result.has_value(),
+         "Repacked archive should unpack successfully");
+  auto repacked_ability_obj = w3x_toolkit::parser::w3u::ParseW3a(
+      ReadBinary(repacked_unpacked_dir / "map" / "war3map.w3a"));
+  Expect(repacked_ability_obj.has_value(),
+         "Repacked ability object file should remain parseable");
+  Expect(!repacked_ability_obj->custom_objects.empty(),
+         "Repacked ability object file should contain the custom object");
+
+  bool found_name = false;
+  bool found_unknown = false;
+  for (const auto& modification :
+       repacked_ability_obj->custom_objects[0].modifications) {
+    if (modification.field_id == "anam" &&
+        std::holds_alternative<std::string>(modification.value) &&
+        std::get<std::string>(modification.value) ==
+            "BinaryConvertedAbility") {
+      found_name = true;
+    }
+    if (modification.field_id == "zzzz" &&
+        modification.level == 2 &&
+        modification.data_pointer == 7 &&
+        std::holds_alternative<std::string>(modification.value) &&
+        std::get<std::string>(modification.value) == "mystery-value") {
+      found_unknown = true;
+    }
+  }
+  Expect(found_name, "Known metadata fields should survive convert -> pack");
+  Expect(found_unknown,
+         "Unknown raw fields should survive convert -> pack via raw syntax");
+}
+
 }  // namespace
 
 int main() {
@@ -422,6 +621,8 @@ int main() {
     TestPackedArchiveRejection();
     TestPackedArchiveCommands();
     TestPackUnpackRoundTrip();
+    TestConfigTemplateAndLogCommands();
+    TestConvertObjectBinaryToIniRoundTrip();
     std::cout << "Smoke tests passed." << std::endl;
     return 0;
   } catch (const std::exception& ex) {

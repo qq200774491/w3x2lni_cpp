@@ -23,3 +23,8 @@ target_link_libraries(w3x_core
     PRIVATE
         w3x_warnings
 )
+
+target_compile_definitions(w3x_core
+    PRIVATE
+        W3X_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)

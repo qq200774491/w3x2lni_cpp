@@ -21,6 +21,15 @@
   - 显示全局帮助或单个命令帮助
 - `version`
   - 显示 CLI 版本
+- `config [--map <workspace_dir>] [section.key[=value]]`
+  - 查看或修改纯 C++ 版分层 INI 配置
+  - 支持默认配置、全局配置、地图工作区配置三层解析
+- `template [output_dir]`
+  - 从内置 `data/<version>/prebuilt` 导出 `Melee/Custom` 模板
+- `log [--path]`
+  - 打印当前日志文件或仅显示日志路径
+- `test`
+  - 发现并执行同目录或构建目录中的 `w3x_smoke_tests`
 - `unpack <input_map.w3x|input_map.w3m> <output_dir>`
   - 完整解包 MPQ 地图
   - 恢复标准地图文件名、已识别的 `SLK`/`INI` 文件名
@@ -33,8 +42,11 @@
   - 目前可合成 `war3map.w3a/w3b/w3d/w3h/w3u/w3t/w3q` 与 `war3mapmisc.txt`
 - `convert <input_map_dir|input_map.w3x|input_map.w3m> <output_dir>`
   - 将目录或 packed map 转换为 LNI 工作区布局
-  - 输出 `.w3x`、`map/`、`resource/`、`sound/`、`table/`、`trigger/`、`w3x2lni/` 与 `w3x2lni.ini`
-  - 生成 `table/w3i.ini`、`table/imp.ini` 和 locale 文件
+  - 输出 `.w3x`、`map/`、`resource/`、`sound/`、`table/`、`trigger/`、`w3x2lni/` 与兼容性的 `w3x2lni.ini`
+  - 生成 `table/w3i.ini`、`table/imp.ini`、`w3x2lni/locale/*` 与 `w3x2lni/config.ini`
+  - 已支持将 `war3map.w3a/w3b/w3d/w3h/w3q/w3t/w3u` 反向导出为 `ability/destructable/doodad/buff/upgrade/item/unit.ini`
+  - 已支持将 `war3mapmisc.txt` 反向导出为 `misc.ini`
+  - 对 metadata 中未识别的对象字段，使用 `raw(...)` 语法保留，并支持后续回包
 - `lni <input_map_dir|input_map.w3x|input_map.w3m> <output_dir>`
   - `convert` 的 `external` 风格别名入口
 - `extract <input_map_dir|input_map.w3x|input_map.w3m> <output_dir>`
@@ -67,6 +79,8 @@ external/     原 Lua 项目参考资料，不参与新构建
 - `pack -> unpack -> 修改 SLK -> 再 pack -> 再 unpack` smoke test 已通过
 - `packed map -> analyze/extract/convert` smoke test 已通过
 - `w3b/w3d` 对象文件生成与回环 smoke test 已通过
+- `config/template/log` smoke test 已通过
+- `war3map.w3a -> ability.ini -> pack -> unpack` 与未知字段 `raw(...)` 回环 smoke test 已通过
 - 对仓库内实图 `雷之呼吸—壹式——霹雳一闪 -.w3x` 已验证：
   - 核心地图文件恢复
   - `ability.ini/unit.ini/upgrade.ini/buff.ini/item.ini/txt.ini/misc.ini` 恢复
@@ -92,6 +106,7 @@ ctest --test-dir build --build-config Release
 
 - `W3X_BUILD_GUI=OFF`
 - `W3X_BUILD_TESTS=ON`
+- 安装时会一并打包 `data/` 到可执行文件旁的 `data/`
 
 如需显式关闭 GUI：
 
@@ -102,7 +117,8 @@ cmake -S . -B build -A x64 -DW3X_BUILD_GUI=OFF
 ## 参考来源
 
 - 原始工具链参考：`external/`
-- 当前运行时优先使用仓库内 `data/` 的 bundled 资源；`external/` 仅保留为行为参考与兼容回退来源
+- 当前运行时会优先从当前工作目录、可执行文件目录和源码目录中解析 `data/`
+- `external/` 仅保留为行为参考与兼容回退来源
 
 ## 许可证
 

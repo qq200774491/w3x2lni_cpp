@@ -14,10 +14,14 @@
 
 #include "cli/commands/analyze_command.h"
 #include "cli/commands/convert_command.h"
+#include "cli/commands/config_command.h"
 #include "cli/commands/extract_command.h"
 #include "cli/commands/help_command.h"
 #include "cli/commands/lni_command.h"
+#include "cli/commands/log_command.h"
 #include "cli/commands/pack_command.h"
+#include "cli/commands/template_command.h"
+#include "cli/commands/test_command.h"
 #include "cli/commands/unpack_command.h"
 #include "cli/commands/version_command.h"
 #include "core/error/error.h"
@@ -169,12 +173,16 @@ void CliApp::RegisterDefaultCommands() {
         return true;
       }));
   (void)RegisterCommand(std::make_unique<VersionCommand>());
+  (void)RegisterCommand(std::make_unique<ConfigCommand>());
   (void)RegisterCommand(std::make_unique<ConvertCommand>());
   (void)RegisterCommand(std::make_unique<LniCommand>());
   (void)RegisterCommand(std::make_unique<ExtractCommand>());
   (void)RegisterCommand(std::make_unique<AnalyzeCommand>());
   (void)RegisterCommand(std::make_unique<UnpackCommand>());
   (void)RegisterCommand(std::make_unique<PackCommand>());
+  (void)RegisterCommand(std::make_unique<TemplateCommand>());
+  (void)RegisterCommand(std::make_unique<LogCommand>());
+  (void)RegisterCommand(std::make_unique<TestCommand>());
 }
 
 Command* CliApp::FindCommand(const std::string& name) const {

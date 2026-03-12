@@ -105,6 +105,14 @@ class Platform {
   // to the Win32 API). On POSIX systems it reads the HOME variable.
   static std::filesystem::path GetHomeDirectory();
 
+  // Returns the absolute path to the running executable when it can be
+  // determined, otherwise an empty path.
+  static std::filesystem::path GetExecutablePath();
+
+  // Returns the directory that contains the running executable, or an empty
+  // path if it cannot be determined.
+  static std::filesystem::path GetExecutableDirectory();
+
   // ---------------------------------------------------------------------------
   // UTF-8 path conversion utilities
   // ---------------------------------------------------------------------------
