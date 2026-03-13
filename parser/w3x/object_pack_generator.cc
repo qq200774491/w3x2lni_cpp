@@ -136,6 +136,12 @@ std::string StripQuotes(std::string_view value) {
 }
 
 std::vector<std::string> SplitCsvPreserveEmpty(std::string_view value) {
+  const std::string trimmed_copy = TrimCopy(value);
+  const std::string_view trimmed(trimmed_copy);
+  if (trimmed.size() >= 2 && trimmed.front() == '{' && trimmed.back() == '}') {
+    value = trimmed.substr(1, trimmed.size() - 2);
+  }
+
   std::vector<std::string> parts;
   std::string current;
   bool in_quotes = false;

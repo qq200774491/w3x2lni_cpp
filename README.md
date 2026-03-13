@@ -34,7 +34,14 @@
 - `slk <input_map_dir|input_map.w3x|input_map.w3m> [output_map.w3x|output_map.w3m]`
   - 将目录或 packed map 转为第二阶段 Slk 风格打包地图
   - 已支持从 `ability/buff/item/upgrade/destructable/doodad.ini` 生成对应 `SLK`
+  - 已支持将 `unit.ini` 保守拆分为 `units/unitui.slk`、`units/unitdata.slk`、`units/unitbalance.slk`、`units/unitabilities.slk`、`units/unitweapons.slk`，并在打包前清理旧的同名 `SLK`
+  - 已支持从 `txt.ini` 保守生成一批目标 `TXT`，包括 `units/campaignabilitystrings.txt`、`units/commonabilitystrings.txt`、`units/campaignunitstrings.txt`、`units/itemstrings.txt`、`units/campaignupgradestrings.txt`、`units/itemabilitystrings.txt`、`units/orcunitstrings.txt`、`doodads/doodadskins.txt`
+  - 若 `txt.ini` 中字符串无法安全直接落进 `TXT`，会外置到重建后的 `war3map.wts`
+  - 已保守接入 `remove_same`：会在打包前按 bundled `prebuilt/Custom/*.ini` 清理 `ability/buff/unit/item/upgrade/doodad/destructable/txt/misc.ini` 中与 default/parent 相同的字段和空段
+  - 已保守接入 `remove_unuse_object`：会基于 `war3map.j`/`scripts/war3map.j` 与 bundled `prebuilt/search.ini` 裁掉确认未引用的 custom `ability/buff/upgrade`，并联动移除匹配的 `txt.ini` 段；`unit/item/doodad/destructable` 当前仍保守保留
+  - 已保守接入 `computed_text`：会在打包前回写 `ability/item/upgrade` 的 `researchubertip/ubertip/description` 中部分 `<id,key>` 占位符
   - 已集中托管已识别的 `TXT/WTS` 输出，并在 `remove_we_only=true` 时清理 `WTG/WCT/W3R/...` 等 WE-only 文件
+  - 当前仍保留 `war3map.w3u` sidecar，不声称已完全用 `SLK` 覆盖单位对象语义
   - 对仅能由 `SLK` 覆盖的对象会抑制冗余 `war3map.w3*`；若存在 `raw(...)` 等当前 `SLK` 无法安全承载的字段，则会保留必要的 `OBJ` sidecar
   - 默认输出 `<stem>_slk.w3x`
 - `test`
@@ -93,6 +100,9 @@ external/     原 Lua 项目参考资料，不参与新构建
 - `war3map.w3a -> ability.ini -> pack -> unpack` 与未知字段 `raw(...)` 回环 smoke test 已通过
 - `obj` 命令与 `pack/unpack` 的对象源过滤 smoke test 已通过
 - `slk` 命令对 `SLK` 生成、`TXT/WTS` 托管、WE-only 清理与必要 `OBJ` sidecar 保留的 smoke test 已通过
+- `unit.ini -> 5 份 unit*.slk + war3map.w3u sidecar` smoke test 已通过
+- `txt.ini -> 多个 TXT + war3map.wts 第一阶段重建` smoke test 已通过
+- `remove_same/remove_unuse_object/computed_text` 内容级 cleanup smoke test 已通过
 - 对仓库内实图 `雷之呼吸—壹式——霹雳一闪 -.w3x` 已验证：
   - 核心地图文件恢复
   - `ability.ini/unit.ini/upgrade.ini/buff.ini/item.ini/txt.ini/misc.ini` 恢复

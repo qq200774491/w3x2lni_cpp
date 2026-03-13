@@ -335,10 +335,251 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 - 这一轮完成的是“Slk 子链第二阶段对齐”。
 - 仍未完成：
-  - `unit.ini -> 5 份 unit*.slk` 的真正语义拆分
+  - 单位对象完全下沉到 `SLK` 并安全压掉 `war3map.w3u`
   - `txt.ini` 聚合生成
   - `war3map.wts` 的重建而非透传
   - `remove_unuse_object/computed_text/remove_same` 的真实内容级语义
+
+### 2026-03-12 第 14 个已落地点
+
+本轮继续完成：
+
+- `slk` 现在已支持从 `unit.ini` 保守生成：
+  - `units/unitui.slk`
+  - `units/unitdata.slk`
+  - `units/unitbalance.slk`
+  - `units/unitabilities.slk`
+  - `units/unitweapons.slk`
+- `slk` 在打包前若发现 `unit.ini`，会清理旧的同名 `unit*.slk`，避免把过期单位表文件混进输出
+- 当前单位对齐策略仍然保守：
+  - 已生成 5 份单位 `SLK`
+  - 但仍保留 `war3map.w3u` sidecar
+  - 不把单位对象误报为“已完全 SLK 化”
+- smoke test 已覆盖：
+  - `unit.ini -> 5 份 unit*.slk`
+  - 旧 `unit*.slk` 清理
+  - `unitui/unitdata/unitbalance/unitabilities/unitweapons.slk` 可解析并保留关键字段
+  - `war3map.w3u` sidecar 仍存在且可解析
+
+新增/更新代码：
+
+- `parser/w3x/slk_pack_generator.cc`
+- `parser/w3x/object_cleanup.cc`
+- `tests/smoke_tests.cc`
+- `README.md`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+.\build2\bin\Release\w3x_tool.exe help slk
+```
+
+说明：
+
+- 这一轮完成的是“Slk 子链第三阶段里的单位拆分保守对齐”。
+- 仍未完成：
+  - 单位对象完全下沉到 `SLK` 并安全压掉 `war3map.w3u`
+  - `txt.ini` 聚合生成
+  - `war3map.wts` 的重建而非透传
+  - `remove_unuse_object/computed_text/remove_same` 的真实内容级语义
+
+### 2026-03-12 第 15 个已落地点
+
+本轮继续完成：
+
+- `slk` 现在已支持从 `txt.ini` 保守生成一批真实 `TXT` 产物，当前已接通：
+  - `units/campaignabilitystrings.txt`
+  - `units/commonabilitystrings.txt`
+  - `units/campaignunitstrings.txt`
+  - `units/itemstrings.txt`
+  - `units/campaignupgradestrings.txt`
+  - `units/itemabilitystrings.txt`
+  - `units/orcunitstrings.txt`
+  - `doodads/doodadskins.txt`
+- 路由规则当前基于 `txt.ini` 节内的 `skintype/skinnableid` 元数据：
+  - 已可把对象文本按类型分发到对应目标 `TXT`
+  - 未识别类型当前保守落到 `units/itemabilitystrings.txt`
+- 若 `txt.ini` 存在，打包前会清理上述当前由纯 C++ 合成的目标 `TXT`，避免过期内容混入输出
+- `war3map.wts` 已进入第一阶段真实重建：
+  - 不再只是把已有 `war3map.wts` 原样透传
+  - 现在会先解析已有 `war3map.wts`，再按规范重新输出
+  - 当 `txt.ini` 中存在当前 `TXT` 不安全承载的字符串（本轮已接通“同时含逗号与双引号”的情况）时，会外置为新的 `TRIGSTR_###` 并写入重建后的 `war3map.wts`
+- `war3mapextra.txt` 与 `war3mapskin.txt` 当前仍按 sidecar 保守透传，但已与上面的 `txt.ini/TXT/WTS` 生成链共存
+- smoke test 已覆盖：
+  - `txt.ini -> 多个 TXT`
+  - 旧目标 `TXT` 清理
+  - `doodads/doodadskins.txt`
+  - `war3mapextra.txt`
+  - `war3mapskin.txt`
+  - `war3map.wts` 第一阶段重建与 `TRIGSTR_000` 落盘
+
+新增/更新代码：
+
+- `parser/w3x/txt_pack_generator.cc`
+- `parser/w3x/object_cleanup.cc`
+- `parser/w3x/wts_file.h`
+- `parser/w3x/wts_file.cc`
+- `tests/smoke_tests.cc`
+- `README.md`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这一轮完成的是“TXT 子链第一阶段对齐 + WTS 重建第一阶段对齐”。
+- 仍未完成：
+  - `txt.ini` 与 `external` 完整等价的全量 `type -> file` 映射
+  - `war3map.wts` 面向 `object/w3i/wtg/jass` 的全面重建
+  - `remove_unuse_object/computed_text/remove_same` 的真实内容级语义
+
+### 2026-03-13 第 16 个已落地点
+
+本轮继续完成：
+
+- `slk.remove_same` 现在已进入真实内容级 cleanup pass
+- 当前会在打包前读取 bundled `prebuilt/Custom/*.ini`，对：
+  - `ability.ini`
+  - `buff.ini`
+  - `unit.ini`
+  - `item.ini`
+  - `upgrade.ini`
+  - `doodad.ini`
+  - `destructable.ini`
+  - `txt.ini`
+  - `misc.ini`
+  做保守的 default/parent 比对裁剪
+- 若字段值与 default/parent 相同，会在 source `.ini` 上直接删除该字段
+- 若一个 section 清理后已经没有真实内容：
+  - 对对象/杂项 `ini`，会删除空 section
+  - 对 `txt.ini`，会保守保留路由元数据 `skintype/skinnableid` 的使用边界；若只剩路由元数据，也会删除空 section
+- smoke test 已覆盖：
+  - 默认 ability section 被裁掉
+  - 默认 txt section 被裁掉
+
+新增/更新代码：
+
+- `parser/w3x/content_cleanup.h`
+- `parser/w3x/content_cleanup.cc`
+- `parser/w3x/object_cleanup.cc`
+- `tests/smoke_tests.cc`
+- `README.md`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这一轮完成的是 `remove_same` 的保守真实接线。
+- 仍未完成：
+  - `external/backend_cleanobj.lua` 里的数组裁剪、`appendindex/reforge`、`txt key` 清理等细粒度等价语义
+
+### 2026-03-13 第 17 个已落地点
+
+本轮继续完成：
+
+- `slk.remove_unuse_object` 现在已进入真实内容级 cleanup pass
+- 当前会：
+  - 扫描 `war3map.j` / `scripts/war3map.j` 中显式 `'ABCD'` rawcode 引用
+  - 读取 bundled `prebuilt/search.ini`
+  - 对当前 source `.ini` 对象建立依赖闭包
+- 当前保守真实裁掉的范围是：
+  - 未引用的 custom `ability`
+  - 未引用的 custom `buff`
+  - 未引用的 custom `upgrade`
+  - 以及 `txt.ini` 中与这些被删对象直接对应的 section
+- 当前仍保守保留：
+  - custom `unit`
+  - custom `item`
+  - custom `doodad`
+  - custom `destructable`
+  因为尚未接入 `doo/random-creep/marketplace` 等完整 external 级引用源
+- 同轮补齐了一个配套缺口：
+  - 若存在对应 `.ini` 源，打包前会清理旧的 `war3map.w3a/w3h/w3t/w3q/w3b/w3d/war3mapmisc.txt`
+  - 避免 source cleanup 已删对象后，旧 binary sidecar 从输入目录漏回输出
+- smoke test 已覆盖：
+  - 未引用 `A002/B002/R002` 被裁掉
+  - 对应 `txt.ini` section 被联动裁掉
+
+新增/更新代码：
+
+- `parser/w3x/content_cleanup.cc`
+- `parser/w3x/object_cleanup.cc`
+- `tests/smoke_tests.cc`
+- `README.md`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这一轮完成的是 `remove_unuse_object` 的保守真实接线。
+- 仍未完成：
+  - `external/backend_searchjass.lua` 对十六进制/整数 rawcode、BJ 标记、随机商店/野怪保留的完整等价
+  - `external/backend_mark.lua` 对 `doo/plugin/mustuse` 的完整引用源
+
+### 2026-03-13 第 18 个已落地点
+
+本轮继续完成：
+
+- `slk.computed_text` 现在已进入真实内容级 cleanup pass
+- 当前已接通的 text sink：
+  - `ability.researchubertip`
+  - `ability.ubertip`
+  - `item.ubertip`
+  - `item.description`
+  - `upgrade.ubertip`
+- 当前已接通的占位符能力：
+  - `<id,key>`
+  - `<id,key,%>`
+  - `key + level` 形式，如 `DataA1`
+  - 公式键：`mindmg1/maxdmg1/mindmg2/maxdmg2/realhp`
+- 当前实现方式是：
+  - 先在打包前直接回写 source `ability/item/upgrade.ini`
+  - 再由现有 `SLK/OBJ/TXT` 生成链消费
+- 同轮顺手补齐了一个旧缺口：
+  - `object_pack_generator` 现在能正确解析 `{...}` repeated field
+  - `DataA={...}`、`Ubertip={...}` 之类字段不会再被错误当成带花括号的单个标量
+- smoke test 已覆盖：
+  - ability `researchubertip`
+  - ability `ubertip`
+  - item `description/ubertip`
+  - upgrade `ubertip`
+
+新增/更新代码：
+
+- `parser/w3x/content_cleanup.cc`
+- `parser/w3x/object_pack_generator.cc`
+- `tests/smoke_tests.cc`
+- `README.md`
+
+已验证：
+
+```powershell
+cmake --build build2 --config Release --target w3x_tool w3x_smoke_tests
+ctest --test-dir build2 -C Release --output-on-failure
+```
+
+说明：
+
+- 这一轮完成的是 `computed_text` 的保守真实接线。
+- 仍未完成：
+  - `external/backend_computed.lua` 面向更广对象与更多 placeholder 的完整等价
+  - `WTS/object/w3i/wtg/jass` 全链条上的统一 computed/refresh 语义
 
 ## 1. 审计目标
 
@@ -622,20 +863,33 @@ ctest --test-dir build2 -C Release --output-on-failure
   - `obj` 仍偏向保留/生成 `war3map.w3*`
   - `slk` 则会在有覆盖性 `units/*.slk` / `doodads/*.slk` 且没有 ini 源时压掉冗余 Obj 文件
 - `slk` 现在已开始从 `ability/buff/item/upgrade/destructable/doodad.ini` 真实生成对应 `SLK`
+- `slk` 现在已开始从 `unit.ini` 保守生成 5 份单位 `SLK`：
+  - `unitui.slk`
+  - `unitdata.slk`
+  - `unitbalance.slk`
+  - `unitabilities.slk`
+  - `unitweapons.slk`
+- 若存在 `unit.ini`，打包前会清理旧的同名 `unit*.slk`
+- `slk` 现在已开始从 `txt.ini` 保守生成一批目标 `TXT`，并会清理旧的同名生成目标
+- `slk` 现在已开始第一阶段重建 `war3map.wts`：现有 `WTS` 会先解析再重写，`txt.ini` 中当前 `TXT` 无法安全承载的字符串也可外置进新 `TRIGSTR_###`
+- `slk` 现在已开始保守执行内容级 cleanup：
+  - `remove_same` 会按 bundled defaults 清理 `ability/buff/unit/item/upgrade/doodad/destructable/txt/misc.ini`
+  - `remove_unuse_object` 会基于 `war3map.j` + `prebuilt/search.ini` 保守裁掉未引用的 custom `ability/buff/upgrade`
+  - `computed_text` 会在打包前回写 `ability/item/upgrade` 的部分 text sink
 - `slk` 现在已开始集中处理已识别的 `TXT/WTS` 文件，并在 `remove_we_only=true` 时清理 WE-only 地图文件
 - 对于带有 `raw(...)` 的对象 ini，`slk` 现在会保留必要的 Obj sidecar，而不是误判为可完全下沉到 SLK
 - 仍然没有看到对应：
-  - `txt.ini` 的完整回写链
+  - `txt.ini` 与 `external` 完整等价的全量回写链
   - `doo/w3s/w3r` 等参考项目 TODO/能力边界中的其它地图语义文件
 
 进一步问题：
 
 - 当前 `PackMapDirectory()` 虽然已经把 `slk` 推进到“ini -> slk + 已识别 txt/wts 托管 + WE-only 清理 + 必要时保留 Obj sidecar”，但它仍然只是第二阶段近似实现。
 - 它还没有完成 `external` 里的：
-  - `unit` 类型的 5 路 `SLK` 语义拆分
-  - `TXT` 脚手架与聚合输出
-  - `WTS` 重建
-  - `remove_unuse_object/computed_text/remove_same` 等真正影响产物内容的对象清理逻辑
+  - `unit` 类型虽已能拆出 5 路 `SLK`，但仍未完成完全覆盖语义，当前还需要 `war3map.w3u` sidecar 兜底
+  - `TXT` 全量脚手架与聚合输出
+  - `WTS` 面向 `object/w3i/wtg/jass` 的全面重建
+  - `remove_unuse_object/computed_text/remove_same` 虽已接入保守真实版，但还没有做到 `external` 的完整对象语义清理
   - `war3mapskin.txt`、`WTG/WCT` 等关联语义收敛
 
 上面这一点属于从源码做出的合理推断，依据是：
@@ -1009,7 +1263,7 @@ ctest --test-dir build2 -C Release --output-on-failure
 
 这部分不是直接拿来和 `external` 对比得出的结论，而是当前仓库内部已经暴露出的风险。
 
-### 6.1 `remove_unused_objects` / `computed_text` / `inline_wts_strings` 仍未参与真实内容级转换，只有 `remove_we_only` 开始进入 `slk` 打包语义
+### 6.1 `remove_unused_objects` / `computed_text` / `inline_wts_strings` 已开始进入真实内容级转换，但仍未达到 `external` 完整闭环
 
 证据：
 
@@ -1022,11 +1276,18 @@ ctest --test-dir build2 -C Release --output-on-failure
 - `WriteConfig()` 会把它们写到 `w3x2lni.ini`。
 - `convert` 现在会读取分层 INI 配置，并把工作区配置输出到 `w3x2lni/config.ini`。
 - `slk.remove_we_only` 现在已开始参与真实打包清理。
-- 但 `remove_unused_objects`、`computed_text`、`inline_wts_strings` 仍然没有看到真正的内容级转换分支。
+- `slk.remove_same` 现在已开始在打包前对 `ability/buff/unit/item/upgrade/doodad/destructable/txt/misc.ini` 做保守 default/parent 清理。
+- `slk.remove_unuse_object` 现在已开始基于 `war3map.j` 与 bundled `prebuilt/search.ini` 保守裁掉未引用的 custom `ability/buff/upgrade`，并联动删除对应 `txt.ini` section。
+- `slk.computed_text` 现在已开始在打包前回写 `ability/item/upgrade` 的部分 computed text sink。
+- `slk` 现在已开始对 `txt.ini` 中的部分不安全字符串做第一阶段 `WTS` 外置与重建。
+- 但 `inline_wts_strings` 仍只停留在 `txt.ini -> WTS` 第一阶段。
+- `remove_unused_objects` 仍未完成 `doo/random-creep/marketplace/BJ flag` 等完整 external 引用源。
+- `computed_text` 仍未完成更广对象、更广 placeholder、以及 `WTS/object/w3i/wtg/jass` 的统一刷新链。
 
 结论：
 
-- 当前有“部分开关已经开始接上，另一部分仍停留在接口层”的情况。
+- 当前已经从“接口层开关”推进到“保守真实内容级 cleanup”。
+- 但若标准是严格等价 `external`，这一块仍然只能算部分对齐。
 
 ### 6.2 `JASS` parser 已存在，但没有形成真正可交付能力
 
